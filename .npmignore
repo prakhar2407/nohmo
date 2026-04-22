@@ -1,0 +1,6 @@
+src/
+*.config.js
+tsconfig*.json
+node_modules/
+.git/
+*.log
