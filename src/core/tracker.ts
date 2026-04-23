@@ -174,7 +174,7 @@ export class NohmoTracker {
     const url = `${this.config.apiUrl}/api/tracker/track/`
 
     try {
-      navigator.sendBeacon(url, body)
+      navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))
       this.log(`Flushed ${events.length} events`)
     } catch {
       try {
@@ -191,7 +191,7 @@ export class NohmoTracker {
   }
 
   private generateSessionId(): string {
-    return 'sess_' + Math.random().toString(36).substr(2, 12)
+    return 'sess_' + Math.random().toString(36).slice(2, 14)
   }
 
   private log(...args: unknown[]) {

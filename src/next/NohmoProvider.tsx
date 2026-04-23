@@ -6,7 +6,7 @@ import { NohmoProvider, useNohmo } from '../react/NohmoProvider'
 import type { NohmoConfig } from '../core/types'
 
 function NohmoNextInner() {
-  const { send } = useNohmo()
+  const { tracker, send } = useNohmo()
   const pathname = usePathname()
   const isFirst = useRef(true)
   const prevPath = useRef<string>(pathname)
@@ -23,7 +23,7 @@ function NohmoNextInner() {
       return
     }
 
-    send('TIME_SPENT', { path: prevPath.current })
+    tracker?.trackTimeSpent(prevPath.current)
     send('PAGE_VIEW', {
       path: pathname,
       title: typeof document !== 'undefined' ? document.title : '',

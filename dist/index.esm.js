@@ -3595,7 +3595,7 @@ class NohmoTracker {
         const body = JSON.stringify({ events, apiKey: this.config.apiKey });
         const url = `${this.config.apiUrl}/api/tracker/track/`;
         try {
-            navigator.sendBeacon(url, body);
+            navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
             this.log(`Flushed ${events.length} events`);
         }
         catch (_a) {
@@ -3613,7 +3613,7 @@ class NohmoTracker {
         }
     }
     generateSessionId() {
-        return 'sess_' + Math.random().toString(36).substr(2, 12);
+        return 'sess_' + Math.random().toString(36).slice(2, 14);
     }
     log(...args) {
         if (this.config.debug) {
@@ -3683,7 +3683,7 @@ function usePageView(path) {
 }
 
 function NohmoNextInner() {
-    const { send } = useNohmo();
+    const { tracker, send } = useNohmo();
     const pathname = usePathname();
     const isFirst = useRef(true);
     const prevPath = useRef(pathname);
@@ -3698,7 +3698,7 @@ function NohmoNextInner() {
             }, 500);
             return;
         }
-        send('TIME_SPENT', { path: prevPath.current });
+        tracker === null || tracker === void 0 ? void 0 : tracker.trackTimeSpent(prevPath.current);
         send('PAGE_VIEW', {
             path: pathname,
             title: typeof document !== 'undefined' ? document.title : '',
