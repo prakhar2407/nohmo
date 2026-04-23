@@ -5,8 +5,8 @@ import { NohmoTracker } from '../core/tracker'
 import type { NohmoConfig } from '../core/types'
 
 interface NohmoContextValue {
-  tracker: NohmoTracker | null
   send: (event: string, data?: Record<string, unknown>) => void
+  trackTimeSpent: (path?: string) => void
   linkUser: (
     userId: string,
     email?: string,
@@ -15,8 +15,8 @@ interface NohmoContextValue {
 }
 
 const NohmoContext = createContext<NohmoContextValue>({
-  tracker: null,
   send: () => undefined,
+  trackTimeSpent: () => undefined,
   linkUser: async () => undefined,
 })
 
@@ -64,6 +64,10 @@ export function NohmoProvider({
     trackerRef.current?.send(event, data)
   }
 
+  const trackTimeSpent = (path?: string) => {
+    trackerRef.current?.trackTimeSpent(path)
+  }
+
   const linkUser = async (
     userId: string,
     email?: string,
@@ -73,7 +77,7 @@ export function NohmoProvider({
   }
 
   return (
-    <NohmoContext.Provider value={{ tracker: trackerRef.current, send, linkUser }}>
+    <NohmoContext.Provider value={{ send, trackTimeSpent, linkUser }}>
       {children}
     </NohmoContext.Provider>
   )

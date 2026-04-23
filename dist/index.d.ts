@@ -74,8 +74,8 @@ declare class AutoCapture {
 }
 
 interface NohmoContextValue {
-    tracker: NohmoTracker | null;
     send: (event: string, data?: Record<string, unknown>) => void;
+    trackTimeSpent: (path?: string) => void;
     linkUser: (userId: string, email?: string, meta?: Record<string, unknown>) => Promise<void>;
 }
 interface NohmoProviderProps {

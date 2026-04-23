@@ -3633,8 +3633,8 @@ class NohmoTracker {
 }
 
 const NohmoContext = react.createContext({
-    tracker: null,
     send: () => undefined,
+    trackTimeSpent: () => undefined,
     linkUser: async () => undefined,
 });
 function NohmoProvider({ children, projectId, apiKey, apiUrl, options = {}, }) {
@@ -3659,11 +3659,15 @@ function NohmoProvider({ children, projectId, apiKey, apiUrl, options = {}, }) {
         var _a;
         (_a = trackerRef.current) === null || _a === void 0 ? void 0 : _a.send(event, data);
     };
+    const trackTimeSpent = (path) => {
+        var _a;
+        (_a = trackerRef.current) === null || _a === void 0 ? void 0 : _a.trackTimeSpent(path);
+    };
     const linkUser = async (userId, email, meta) => {
         var _a;
         await ((_a = trackerRef.current) === null || _a === void 0 ? void 0 : _a.linkUser(userId, email, meta));
     };
-    return (jsxRuntime.jsx(NohmoContext.Provider, { value: { tracker: trackerRef.current, send, linkUser }, children: children }));
+    return (jsxRuntime.jsx(NohmoContext.Provider, { value: { send, trackTimeSpent, linkUser }, children: children }));
 }
 function useNohmo() {
     return react.useContext(NohmoContext);
@@ -3685,7 +3689,7 @@ function usePageView(path) {
 }
 
 function NohmoNextInner() {
-    const { tracker, send } = useNohmo();
+    const { trackTimeSpent, send } = useNohmo();
     const pathname = navigation.usePathname();
     const isFirst = react.useRef(true);
     const prevPath = react.useRef(pathname);
@@ -3700,7 +3704,7 @@ function NohmoNextInner() {
             }, 500);
             return;
         }
-        tracker === null || tracker === void 0 ? void 0 : tracker.trackTimeSpent(prevPath.current);
+        trackTimeSpent(prevPath.current);
         send('PAGE_VIEW', {
             path: pathname,
             title: typeof document !== 'undefined' ? document.title : '',
