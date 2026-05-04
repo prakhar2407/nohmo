@@ -24,7 +24,6 @@ interface NohmoProviderProps {
   children: React.ReactNode
   projectId: string
   apiKey: string
-  apiUrl: string
   options?: Partial<NohmoConfig>
 }
 
@@ -32,7 +31,6 @@ export function NohmoProvider({
   children,
   projectId,
   apiKey,
-  apiUrl,
   options = {},
 }: NohmoProviderProps) {
   const trackerRef = useRef<NohmoTracker | null>(null)
@@ -41,7 +39,6 @@ export function NohmoProvider({
     const tracker = new NohmoTracker({
       projectId,
       apiKey,
-      apiUrl,
       ...options,
     })
 

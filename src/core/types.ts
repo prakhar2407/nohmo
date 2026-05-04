@@ -1,7 +1,6 @@
 export interface NohmoConfig {
   projectId: string
   apiKey: string
-  apiUrl: string
   flushInterval?: number
   debug?: boolean
   autoPageView?: boolean

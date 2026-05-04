@@ -3,6 +3,8 @@ import { getDeviceId } from './fingerprint'
 import { EventQueue } from './queue'
 import type { NohmoConfig, NohmoEvent, NohmoState } from './types'
 
+const NOHMO_API_URL = 'https://www.nohmo.in'
+
 export class NohmoTracker {
   private config: Required<NohmoConfig>
   private state: NohmoState
@@ -42,7 +44,7 @@ export class NohmoTracker {
       this.state.deviceId = deviceId
 
       const res = await fetch(
-        `${this.config.apiUrl}/api/tracker/identify/`,
+        `${NOHMO_API_URL}/api/tracker/identify/`,
         {
           method: 'POST',
           headers: {
@@ -100,7 +102,7 @@ export class NohmoTracker {
     this.queue.flush()
 
     try {
-      await fetch(`${this.config.apiUrl}/api/tracker/link-user/`, {
+      await fetch(`${NOHMO_API_URL}/api/tracker/link-user/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -171,7 +173,7 @@ export class NohmoTracker {
     if (!events.length) return
 
     const body = JSON.stringify({ events, apiKey: this.config.apiKey })
-    const url = `${this.config.apiUrl}/api/tracker/track/`
+    const url = `${NOHMO_API_URL}/api/tracker/track/`
 
     try {
       navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))

@@ -38,7 +38,6 @@ interface NohmoNextProviderProps {
   children: React.ReactNode
   projectId: string
   apiKey: string
-  apiUrl: string
   options?: Partial<NohmoConfig>
 }
 
@@ -46,14 +45,12 @@ export function NohmoNextProvider({
   children,
   projectId,
   apiKey,
-  apiUrl,
   options = {},
 }: NohmoNextProviderProps) {
   return (
     <NohmoProvider
       projectId={projectId}
       apiKey={apiKey}
-      apiUrl={apiUrl}
       options={options}
     >
       <NohmoNextInner />

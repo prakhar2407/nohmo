@@ -22,7 +22,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <NohmoNextProvider
           projectId={process.env.NEXT_PUBLIC_NOHMO_PROJECT_ID!}
           apiKey={process.env.NEXT_PUBLIC_NOHMO_API_KEY!}
-          apiUrl={process.env.NEXT_PUBLIC_NOHMO_URL!}
         >
           {children}
         </NohmoNextProvider>
@@ -49,7 +48,6 @@ export default function App({ Component, pageProps }: AppProps) {
     <NohmoProvider
       projectId={process.env.NEXT_PUBLIC_NOHMO_PROJECT_ID!}
       apiKey={process.env.NEXT_PUBLIC_NOHMO_API_KEY!}
-      apiUrl={process.env.NEXT_PUBLIC_NOHMO_URL!}
     >
       <Component {...pageProps} />
     </NohmoProvider>
@@ -102,7 +100,6 @@ function App() {
     <NohmoProvider
       projectId="proj_xxxx"
       apiKey="pk_xxxx"
-      apiUrl="https://your-analytics-server.com"
     >
       <YourApp />
     </NohmoProvider>
@@ -128,7 +125,6 @@ export default function MyPage() {
 ```env
 NEXT_PUBLIC_NOHMO_PROJECT_ID=proj_xxxx
 NEXT_PUBLIC_NOHMO_API_KEY=pk_xxxx
-NEXT_PUBLIC_NOHMO_URL=https://your-analytics-server.com
 ```
 
 ## Options
@@ -145,7 +141,6 @@ NEXT_PUBLIC_NOHMO_URL=https://your-analytics-server.com
 <NohmoNextProvider
   projectId="..."
   apiKey="..."
-  apiUrl="..."
   options={{
     flushInterval: 5000,
     debug: true,
