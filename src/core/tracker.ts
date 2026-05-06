@@ -3,7 +3,7 @@ import { getDeviceId } from './fingerprint'
 import { EventQueue } from './queue'
 import type { NohmoConfig, NohmoEvent, NohmoState } from './types'
 
-const NOHMO_API_URL = 'https://www.nohmo.in'
+const NOHMO_API_URL = atob('aHR0cHM6Ly93d3cubm9obW8uaW4=')
 
 export class NohmoTracker {
   private config: Required<NohmoConfig>

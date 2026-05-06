@@ -1,11 +1,11 @@
-# nohmo-sdk
+# nohmo
 
 Official analytics SDK for [Nohmo](https://nohmo.com) — device fingerprinting, session journeys, and event batching for React and Next.js.
 
 ## Install
 
 ```bash
-npm install nohmo-sdk
+npm install nohmo
 ```
 
 ## Next.js (App Router)
@@ -13,7 +13,7 @@ npm install nohmo-sdk
 In `app/layout.tsx`:
 
 ```tsx
-import { NohmoNextProvider } from 'nohmo-sdk'
+import { NohmoNextProvider } from 'nohmo'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -38,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 In `pages/_app.tsx`:
 
 ```tsx
-import { NohmoProvider } from 'nohmo-sdk'
+import { NohmoProvider } from 'nohmo'
 import { useRouter } from 'next/router'
 import { useEffect } from 'react'
 import type { AppProps } from 'next/app'
@@ -58,7 +58,7 @@ export default function App({ Component, pageProps }: AppProps) {
 ## Track events anywhere
 
 ```tsx
-import { useNohmo } from 'nohmo-sdk'
+import { useNohmo } from 'nohmo'
 
 export default function CarCard({ car }: { car: { id: string; price: number } }) {
   const { send } = useNohmo()
@@ -74,7 +74,7 @@ export default function CarCard({ car }: { car: { id: string; price: number } })
 ## Identify users after login
 
 ```tsx
-import { useNohmo } from 'nohmo-sdk'
+import { useNohmo } from 'nohmo'
 
 export default function LoginForm() {
   const { linkUser } = useNohmo()
@@ -93,7 +93,7 @@ All events tracked before `linkUser` is called are anonymously recorded and auto
 ## Plain React
 
 ```tsx
-import { NohmoProvider } from 'nohmo-sdk'
+import { NohmoProvider } from 'nohmo'
 
 function App() {
   return (
@@ -112,7 +112,7 @@ Works the same as the Next.js provider but without automatic route-change tracki
 ## Manual page view hook
 
 ```tsx
-import { usePageView } from 'nohmo-sdk'
+import { usePageView } from 'nohmo'
 
 export default function MyPage() {
   usePageView('/my-page')
