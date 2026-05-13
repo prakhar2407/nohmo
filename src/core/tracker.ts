@@ -3,7 +3,13 @@ import { getDeviceId } from './fingerprint'
 import { EventQueue } from './queue'
 import type { NohmoConfig, NohmoEvent, NohmoState } from './types'
 
-const NOHMO_API_URL = atob('aHR0cHM6Ly93d3cubm9obW8uaW4=')
+const _b = (s: string) => atob(s)
+const _h = _b('aHR0cHM6Ly93d3cubm9obW8uaW4=')
+const _p = {
+  i: _b('L2FwaS90cmFja2VyL2lkZW50aWZ5Lw=='),
+  t: _b('L2FwaS90cmFja2VyL3RyYWNrLw=='),
+  l: _b('L2FwaS90cmFja2VyL2xpbmstdXNlci8='),
+}
 
 export class NohmoTracker {
   private config: Required<NohmoConfig>
@@ -44,7 +50,7 @@ export class NohmoTracker {
       this.state.deviceId = deviceId
 
       const res = await fetch(
-        `${NOHMO_API_URL}/api/tracker/identify/`,
+        `${_h}${_p.i}`,
         {
           method: 'POST',
           headers: {
@@ -73,13 +79,13 @@ export class NohmoTracker {
   }
 
   send(event: string, data: Record<string, unknown> = {}) {
-    if (!this.state.ready) {
+    if (!this.state.ready || !this.state.deviceId) {
       this.log('Not ready, dropping event:', event)
       return
     }
 
     const payload: NohmoEvent = {
-      deviceId: this.state.deviceId!,
+      deviceId: this.state.deviceId,
       userId: this.state.userId,
       sessionId: this.state.sessionId,
       event,
@@ -102,7 +108,7 @@ export class NohmoTracker {
     this.queue.flush()
 
     try {
-      await fetch(`${NOHMO_API_URL}/api/tracker/link-user/`, {
+      await fetch(`${_h}${_p.l}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,7 +179,7 @@ export class NohmoTracker {
     if (!events.length) return
 
     const body = JSON.stringify({ events, apiKey: this.config.apiKey })
-    const url = `${NOHMO_API_URL}/api/tracker/track/`
+    const url = `${_h}${_p.t}`
 
     try {
       navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))
