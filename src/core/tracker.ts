@@ -11,12 +11,18 @@ const _p = {
   l: _b('L2FwaS90cmFja2VyL2xpbmstdXNlci8='),
 }
 
+type PartialEvent = Omit<NohmoEvent, 'deviceId'>
+
 export class NohmoTracker {
   private config: Required<NohmoConfig>
   private state: NohmoState
   private queue: EventQueue
   private pageStart: number = Date.now()
   private autoCapture: AutoCapture | null = null
+  // Events queued before init() resolves the canonical deviceId
+  private pendingEvents: PartialEvent[] = []
+  private initResolve: () => void = () => {}
+  private readonly initPromise: Promise<void>
 
   constructor(config: NohmoConfig) {
     this.config = {
@@ -36,6 +42,8 @@ export class NohmoTracker {
       ready: false,
     }
 
+    this.initPromise = new Promise(resolve => { this.initResolve = resolve })
+
     this.queue = new EventQueue(
       (events) => this.sendBatch(events),
       this.config.flushInterval
@@ -43,39 +51,59 @@ export class NohmoTracker {
   }
 
   async init(): Promise<void> {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') {
+      this.initResolve()
+      return
+    }
 
     try {
       const [deviceId, stableId] = await Promise.all([getDeviceId(), getStableId()])
-      this.state.deviceId = deviceId
 
-      const res = await fetch(
-        `${_h}${_p.i}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': this.config.apiKey,
-          },
-          body: JSON.stringify({
-            deviceId,
-            stableId,
-            knownUserId: localStorage.getItem('_nohmo_uid') ?? undefined,
-          }),
+      let canonicalId = deviceId
+      let userId: string | null = null
+
+      try {
+        const res = await fetch(
+          `${_h}${_p.i}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': this.config.apiKey,
+            },
+            body: JSON.stringify({
+              deviceId,
+              stableId,
+              knownUserId: localStorage.getItem('_nohmo_uid') ?? undefined,
+            }),
+          }
+        )
+
+        const json = await res.json() as { success: boolean; data?: { deviceId?: string; userId?: string } }
+        const respData = json.data ?? {}
+        canonicalId = respData.deviceId ?? deviceId
+        userId = respData.userId ?? null
+
+        if (canonicalId !== deviceId) {
+          localStorage.setItem('_nohmo_did', canonicalId)
         }
-      )
-
-      const data = await res.json() as { deviceId?: string; userId?: string }
-      // Backend may return a different canonical deviceId (deduplication)
-      const canonicalId = data.deviceId ?? deviceId
-      if (canonicalId !== deviceId) {
-        localStorage.setItem('_nohmo_did', canonicalId)
+      } catch {
+        // Identify failed — fall back to local deviceId. Events will be stored
+        // once the device is created on the next successful identify.
       }
+
       this.state.deviceId = canonicalId
-      this.state.userId = data.userId ?? null
+      this.state.userId = userId
       this.state.ready = true
 
+      // Drain events that were sent before init completed
+      for (const e of this.pendingEvents) {
+        this.queue.push({ ...e, deviceId: canonicalId })
+      }
+      this.pendingEvents = []
+
       this.queue.start()
+      this.initResolve()
 
       if (this.config.autoCapture) {
         this.autoCapture = new AutoCapture(this)
@@ -84,18 +112,14 @@ export class NohmoTracker {
 
       this.log('Nohmo initialized', this.state)
     } catch (err) {
+      this.pendingEvents = []
+      this.initResolve()
       console.error('[Nohmo] Failed to initialize:', err)
     }
   }
 
   send(event: string, data: Record<string, unknown> = {}) {
-    if (!this.state.ready || !this.state.deviceId) {
-      this.log('Not ready, dropping event:', event)
-      return
-    }
-
-    const payload: NohmoEvent = {
-      deviceId: this.state.deviceId,
+    const partial: PartialEvent = {
       userId: this.state.userId,
       sessionId: this.state.sessionId,
       event,
@@ -105,8 +129,15 @@ export class NohmoTracker {
       ts: Date.now(),
     }
 
-    this.queue.push(payload)
-    this.log('Event queued:', payload)
+    if (!this.state.deviceId) {
+      // init() hasn't resolved the canonical deviceId yet — buffer and drain later
+      this.pendingEvents.push(partial)
+      this.log('Buffered pre-init event:', event)
+      return
+    }
+
+    this.queue.push({ ...partial, deviceId: this.state.deviceId })
+    this.log('Event queued:', event)
   }
 
   async linkUser(
@@ -114,6 +145,10 @@ export class NohmoTracker {
     email?: string,
     meta?: Record<string, unknown>
   ): Promise<void> {
+    // Wait for init to complete so we have a valid deviceId and the device
+    // record exists in the backend before we try to link it.
+    await this.initPromise
+
     this.state.userId = userId
     this.queue.flush()
 
@@ -192,20 +227,24 @@ export class NohmoTracker {
     const body = JSON.stringify({ events, apiKey: this.config.apiKey })
     const url = `${_h}${_p.t}`
 
+    // sendBeacon returns false (not an exception) when it fails — e.g. in some
+    // incognito modes or when the browser queue is full. Always fall back to fetch.
+    const beaconSent = navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))
+    if (beaconSent) {
+      this.log(`Flushed ${events.length} events via beacon`)
+      return
+    }
+
     try {
-      navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))
-      this.log(`Flushed ${events.length} events`)
-    } catch {
-      try {
-        await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-          keepalive: true,
-        })
-      } catch (err) {
-        console.error('[Nohmo] Failed to flush events:', err)
-      }
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: true,
+      })
+      this.log(`Flushed ${events.length} events via fetch`)
+    } catch (err) {
+      console.error('[Nohmo] Failed to flush events:', err)
     }
   }
 
