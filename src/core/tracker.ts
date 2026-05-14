@@ -61,7 +61,13 @@ export class NohmoTracker {
         }
       )
 
-      const data = await res.json() as { userId?: string }
+      const data = await res.json() as { deviceId?: string; userId?: string }
+      // Backend may return a different canonical deviceId (deduplication)
+      const canonicalId = data.deviceId ?? deviceId
+      if (canonicalId !== deviceId) {
+        localStorage.setItem('_nohmo_did', canonicalId)
+      }
+      this.state.deviceId = canonicalId
       this.state.userId = data.userId ?? null
       this.state.ready = true
 
