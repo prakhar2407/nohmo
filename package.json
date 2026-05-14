@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "nohmo",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Official analytics SDK for Nohmo — device tracking, session journeys, and event batching for React and Next.js",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
