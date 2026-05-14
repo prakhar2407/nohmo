@@ -47,8 +47,9 @@
     "events"
   ],
   "license": "MIT",
+  "homepage": "https://www.nohmo.in",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/nohmo-sdk"
+    "url": "https://github.com/prakhar2407/nohmo"
   }
 }

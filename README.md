@@ -1,6 +1,6 @@
 # nohmo
 
-Official analytics SDK for [Nohmo](https://nohmo.com) — device fingerprinting, session journeys, and event batching for React and Next.js.
+Official analytics SDK for [Nohmo](https://www.nohmo.in) — device fingerprinting, session journeys, and event batching for React and Next.js.
 
 ## Install
 
@@ -90,6 +90,8 @@ export default function LoginForm() {
 
 All events tracked before `linkUser` is called are anonymously recorded and automatically associated with the user on the backend once linked.
 
+Once a user is linked on any device, Nohmo remembers them. If they visit your site on a different device and log in again, their profile (email, metadata) is automatically carried over and all events are attributed to the same user.
+
 ## Plain React
 
 ```tsx
@@ -136,6 +138,7 @@ NEXT_PUBLIC_NOHMO_API_KEY=pk_xxxx
 | `autoPageView` | `boolean` | `true` | Auto-track page views (Next.js provider only) |
 | `autoScrollDepth` | `boolean` | `true` | Auto-track scroll depth milestones (25/50/75/100%) |
 | `autoTimeSpent` | `boolean` | `true` | Auto-track time spent on each page |
+| `autoCapture` | `boolean` | `true` | Auto-capture clicks and interactions |
 
 ```tsx
 <NohmoNextProvider
@@ -162,10 +165,10 @@ NEXT_PUBLIC_NOHMO_API_KEY=pk_xxxx
 
 ## How it works
 
-1. On first load, a device fingerprint is generated via [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs) and stored in `localStorage`.
-2. The SDK calls `/api/tracker/identify/` on your Nohmo backend to register the device.
+1. On first load, a device fingerprint is generated using browser signals (user agent, screen, timezone, hardware, canvas rendering) via the built-in Web Crypto API — no third-party dependency. The fingerprint is stored in `localStorage`.
+2. The SDK calls the Nohmo backend to register the device. If the same device returns from incognito mode or with cleared storage, the backend recognises it via a stable hardware signal hash and returns the original device ID.
 3. Events are queued in memory and flushed as a batch every `flushInterval` ms via `navigator.sendBeacon` (with `fetch` as fallback).
-4. When the user logs in, `linkUser()` flushes all queued anonymous events and then calls `/api/tracker/link-user/` to associate the device with a real user.
+4. When the user logs in, `linkUser()` flushes all queued anonymous events and calls the backend to associate the device with a real user. The user ID is persisted in `localStorage` so future visits — even on different devices — are automatically attributed to the same user.
 
 ## License
 
