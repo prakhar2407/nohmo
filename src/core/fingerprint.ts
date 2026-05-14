@@ -1,4 +1,5 @@
 let cachedDeviceId: string | null = null
+let cachedStableId: string | null = null
 
 function getCanvasFingerprint(): string {
   try {
@@ -41,19 +42,10 @@ function getWebGLInfo(): string {
   }
 }
 
-async function hash(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input)
-  const buf = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(buf))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-async function generateFingerprint(): Promise<string> {
+function stableSignals(): string {
   const nav = navigator
   const scr = screen
-
-  const signals = [
+  return [
     nav.userAgent,
     nav.language,
     nav.platform,
@@ -65,11 +57,30 @@ async function generateFingerprint(): Promise<string> {
     String(scr.colorDepth),
     String(window.devicePixelRatio ?? ''),
     Intl.DateTimeFormat().resolvedOptions().timeZone,
-    getCanvasFingerprint(),
-    getWebGLInfo(),
   ].join('|')
+}
 
-  return hash(signals)
+async function hash(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input)
+  const buf = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+export async function getStableId(): Promise<string> {
+  if (cachedStableId) return cachedStableId
+
+  const stored = localStorage.getItem('_nohmo_sid')
+  if (stored) {
+    cachedStableId = stored
+    return stored
+  }
+
+  const id = await hash(stableSignals())
+  localStorage.setItem('_nohmo_sid', id)
+  cachedStableId = id
+  return id
 }
 
 export async function getDeviceId(): Promise<string> {
@@ -81,8 +92,8 @@ export async function getDeviceId(): Promise<string> {
     return stored
   }
 
-  const deviceId = await generateFingerprint()
-  localStorage.setItem('_nohmo_did', deviceId)
-  cachedDeviceId = deviceId
-  return deviceId
+  const id = await hash(stableSignals() + '|' + getCanvasFingerprint() + '|' + getWebGLInfo())
+  localStorage.setItem('_nohmo_did', id)
+  cachedDeviceId = id
+  return id
 }
