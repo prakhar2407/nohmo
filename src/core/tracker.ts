@@ -210,7 +210,15 @@ export class NohmoTracker {
   }
 
   private generateSessionId(): string {
-    return 'sess_' + Math.random().toString(36).slice(2, 14)
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('_nohmo_sess')
+      if (stored) return stored
+    }
+    const id = 'sess_' + Math.random().toString(36).slice(2, 14)
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('_nohmo_sess', id)
+    }
+    return id
   }
 
   private log(...args: unknown[]) {
