@@ -1,6 +1,6 @@
 # nohmo
 
-Official analytics SDK for [Nohmo](https://www.nohmo.in) — device fingerprinting, session journeys, and event batching for React and Next.js.
+Official analytics SDK for [Nohmo](https://www.nohmo.in) — device tracking, session journeys, UTM attribution, and real-time event streaming for React and Next.js.
 
 ## Install
 
@@ -8,11 +8,12 @@ Official analytics SDK for [Nohmo](https://www.nohmo.in) — device fingerprinti
 npm install nohmo
 ```
 
-## Next.js (App Router)
+## Quick start
 
-In `app/layout.tsx`:
+### Next.js (App Router)
 
 ```tsx
+// app/layout.tsx
 import { NohmoNextProvider } from 'nohmo'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -31,16 +32,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-`NohmoNextProvider` automatically tracks page views on every route change and records time spent on each page using `usePathname` from Next.js App Router.
+Page views, time spent, scroll depth, and clicks are tracked automatically from this point.
 
-## Next.js (Pages Router)
+```env
+NEXT_PUBLIC_NOHMO_PROJECT_ID=proj_xxxx
+NEXT_PUBLIC_NOHMO_API_KEY=pk_xxxx
+```
 
-In `pages/_app.tsx`:
+### Next.js (Pages Router)
 
 ```tsx
+// pages/_app.tsx
 import { NohmoProvider } from 'nohmo'
-import { useRouter } from 'next/router'
-import { useEffect } from 'react'
 import type { AppProps } from 'next/app'
 
 export default function App({ Component, pageProps }: AppProps) {
@@ -55,21 +58,41 @@ export default function App({ Component, pageProps }: AppProps) {
 }
 ```
 
-## Track events anywhere
+### Plain React (Vite, CRA)
+
+```tsx
+import { NohmoProvider } from 'nohmo'
+
+function App() {
+  return (
+    <NohmoProvider projectId="proj_xxxx" apiKey="pk_xxxx">
+      <YourApp />
+    </NohmoProvider>
+  )
+}
+```
+
+No automatic route-change tracking — use `usePageView('/path')` in each page component or call `send('PAGE_VIEW', …)` manually on route changes.
+
+---
+
+## Track custom events
 
 ```tsx
 import { useNohmo } from 'nohmo'
 
-export default function CarCard({ car }: { car: { id: string; price: number } }) {
+export default function BuyButton({ item }: { item: { id: string; price: number } }) {
   const { send } = useNohmo()
 
   return (
-    <button onClick={() => send('car_viewed', { carId: car.id, price: car.price })}>
-      View Car
+    <button onClick={() => send('purchase_started', { itemId: item.id, price: item.price })}>
+      Buy now
     </button>
   )
 }
 ```
+
+Events are queued in memory and flushed as a batch every `flushInterval` ms via `navigator.sendBeacon` (falling back to `fetch`). They survive page unload and never block the main thread.
 
 ## Identify users after login
 
@@ -88,28 +111,9 @@ export default function LoginForm() {
 }
 ```
 
-All events tracked before `linkUser` is called are anonymously recorded and automatically associated with the user on the backend once linked.
+Every event fired before `linkUser()` — including across previous sessions — is retroactively attached to the user on the backend. Nothing is lost.
 
-Once a user is linked on any device, Nohmo remembers them. If they visit your site on a different device and log in again, their profile (email, metadata) is automatically carried over and all events are attributed to the same user.
-
-## Plain React
-
-```tsx
-import { NohmoProvider } from 'nohmo'
-
-function App() {
-  return (
-    <NohmoProvider
-      projectId="proj_xxxx"
-      apiKey="pk_xxxx"
-    >
-      <YourApp />
-    </NohmoProvider>
-  )
-}
-```
-
-Works the same as the Next.js provider but without automatic route-change tracking. Call `send('PAGE_VIEW', { path })` manually on route changes, or use the `usePageView` hook.
+Once a user is linked, their identity persists. If they visit from a different device and call `linkUser()` again with the same ID, their profile and metadata are automatically merged.
 
 ## Manual page view hook
 
@@ -117,28 +121,50 @@ Works the same as the Next.js provider but without automatic route-change tracki
 import { usePageView } from 'nohmo'
 
 export default function MyPage() {
-  usePageView('/my-page')
-  return <div>...</div>
+  usePageView('/my-page') // fires PAGE_VIEW once on mount
+  return <div>…</div>
 }
 ```
 
-## Environment variables
+---
 
-```env
-NEXT_PUBLIC_NOHMO_PROJECT_ID=proj_xxxx
-NEXT_PUBLIC_NOHMO_API_KEY=pk_xxxx
+## What gets tracked automatically
+
+| Event | Trigger | Data |
+|-------|---------|------|
+| `PAGE_VIEW` | Every route change (Next.js) or `usePageView()` | `page`, `referrer` |
+| `TIME_SPENT` | When navigating away from a page | `seconds` |
+| `SCROLL_DEPTH` | At 25 / 50 / 75 / 100% scroll milestones | `depth` |
+| `CLICK` | Click on any interactive element | `tag`, `text`, `href` |
+| `RAGE_CLICK` | Three or more rapid clicks in the same spot | `tag`, `text` |
+| `USER_LINKED` | When `linkUser()` is called | `email` |
+
+Disable any category via the `options` prop.
+
+## UTM attribution
+
+UTM parameters are captured automatically on the first page load of each session and sent with every subsequent event. No extra code needed.
+
 ```
+https://yourapp.com?utm_source=google&utm_medium=cpc&utm_campaign=spring-sale
+```
+
+Supported parameters: `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`.
+
+Parameters are stored in `sessionStorage` so they persist across SPA navigations even when the user lands on a clean URL. Attribution is first-touch per session. Results appear in the **Traffic** dashboard.
+
+---
 
 ## Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `flushInterval` | `number` | `3000` | Milliseconds between batch event flushes |
-| `debug` | `boolean` | `false` | Log events and state to the browser console |
-| `autoPageView` | `boolean` | `true` | Auto-track page views (Next.js provider only) |
-| `autoScrollDepth` | `boolean` | `true` | Auto-track scroll depth milestones (25/50/75/100%) |
-| `autoTimeSpent` | `boolean` | `true` | Auto-track time spent on each page |
-| `autoCapture` | `boolean` | `true` | Auto-capture clicks and interactions |
+| `debug` | `boolean` | `false` | Log all events and state to the browser console |
+| `autoPageView` | `boolean` | `true` | Send `PAGE_VIEW` on every route change (Next.js only) |
+| `autoScrollDepth` | `boolean` | `true` | Track scroll depth at 25 / 50 / 75 / 100% |
+| `autoTimeSpent` | `boolean` | `true` | Send `TIME_SPENT` when leaving a page |
+| `autoCapture` | `boolean` | `true` | Capture clicks automatically |
 
 ```tsx
 <NohmoNextProvider
@@ -154,21 +180,36 @@ NEXT_PUBLIC_NOHMO_API_KEY=pk_xxxx
 </NohmoNextProvider>
 ```
 
-## What gets tracked automatically
+---
 
-| Event | Trigger |
-|-------|---------|
-| `PAGE_VIEW` | Every route change (Next.js) or manually |
-| `TIME_SPENT` | On route change, with seconds on previous page |
-| `SCROLL_DEPTH` | At 25%, 50%, 75%, and 100% scroll milestones |
-| `USER_LINKED` | When `linkUser()` is called |
+## What the dashboard shows
+
+| Dashboard page | What you get |
+|----------------|-------------|
+| **Overview** | Event volume chart, unique devices, sessions, avg time spent, top pages |
+| **Devices** | Every device with browser, OS, screen size, timezone, country, city, last seen, pages visited |
+| **Device journey** | Full chronological event history per device, grouped by session |
+| **Live feed** | Real-time event stream via WebSocket — see who is on your site right now |
+| **Traffic** | Session breakdown by UTM source, medium, and campaign |
+| **Journeys** | All sessions across all devices, sortable by recency |
 
 ## How it works
 
-1. On first load, a device fingerprint is generated using browser signals (user agent, screen, timezone, hardware, canvas rendering) via the built-in Web Crypto API — no third-party dependency. The fingerprint is stored in `localStorage`.
-2. The SDK calls the Nohmo backend to register the device. If the same device returns from incognito mode or with cleared storage, the backend recognises it via a stable hardware signal hash and returns the original device ID.
-3. Events are queued in memory and flushed as a batch every `flushInterval` ms via `navigator.sendBeacon` (with `fetch` as fallback).
-4. When the user logs in, `linkUser()` flushes all queued anonymous events and calls the backend to associate the device with a real user. The user ID is persisted in `localStorage` so future visits — even on different devices — are automatically attributed to the same user.
+1. On first load, a 128-bit random device ID is generated via the Web Crypto API and stored in `localStorage`. Subsequent visits on the same browser reuse it.
+2. The SDK registers the device with the Nohmo backend, recording browser, OS, screen resolution, timezone, and language. The backend resolves GeoIP location from the request IP.
+3. UTM parameters are read from the URL and stored in `sessionStorage` for the duration of the session.
+4. Events are queued locally and flushed in batches via `navigator.sendBeacon`. Each event carries the device ID, session ID, page, timestamp, and any UTM context.
+5. When `linkUser()` is called, the device is associated with a real user identity server-side. All prior anonymous events are attributed to that user retroactively.
+
+## Pricing
+
+| Plan | Price | Events |
+|------|-------|--------|
+| Starter | Free | 50k/month |
+| Pro | $29/month | 500k/month |
+| Business | $79/month | 5M/month |
+
+[See full pricing →](https://www.nohmo.in/pricing)
 
 ## License
 
