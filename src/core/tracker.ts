@@ -2,6 +2,7 @@ import { AutoCapture } from './autocapture'
 import { getDeviceId, getDeviceInfo, getStableId } from './fingerprint'
 import { EventQueue } from './queue'
 import type { NohmoConfig, NohmoEvent, NohmoState } from './types'
+import { getUTMParams } from './utm'
 
 const _b = (s: string) => atob(s)
 const _h = _b('aHR0cHM6Ly93d3cubm9obW8uaW4=')
@@ -122,6 +123,7 @@ export class NohmoTracker {
   }
 
   send(event: string, data: Record<string, unknown> = {}) {
+    const utm = getUTMParams()
     const partial: PartialEvent = {
       userId: this.state.userId,
       sessionId: this.state.sessionId,
@@ -130,6 +132,7 @@ export class NohmoTracker {
       page: typeof window !== 'undefined' ? window.location.pathname : '',
       referrer: typeof document !== 'undefined' ? document.referrer : '',
       ts: Date.now(),
+      ...(Object.keys(utm).length > 0 ? { utm } : {}),
     }
 
     if (!this.state.deviceId) {

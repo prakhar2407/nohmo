@@ -1,4 +1,5 @@
 export type { DeviceInfo } from './fingerprint'
+export type { UTMParams } from './utm'
 
 export interface NohmoConfig {
   projectId: string
@@ -20,6 +21,7 @@ export interface NohmoEvent {
   page: string
   referrer: string
   ts: number
+  utm?: import('./utm').UTMParams
 }
 
 export interface NohmoUser {
