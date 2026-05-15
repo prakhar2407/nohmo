@@ -75,6 +75,8 @@ export class NohmoTracker {
               deviceId,
               stableId,
               knownUserId: localStorage.getItem('_nohmo_uid') ?? undefined,
+              page: typeof window !== 'undefined' ? window.location.pathname : '',
+              referrer: typeof document !== 'undefined' ? document.referrer : '',
             }),
           }
         )

@@ -14,12 +14,10 @@ function NohmoNextInner() {
   useEffect(() => {
     if (isFirst.current) {
       isFirst.current = false
-      setTimeout(() => {
-        send('PAGE_VIEW', {
-          path: pathname,
-          title: typeof document !== 'undefined' ? document.title : '',
-        })
-      }, 500)
+      send('PAGE_VIEW', {
+        path: pathname,
+        title: typeof document !== 'undefined' ? document.title : '',
+      })
       return
     }
 
