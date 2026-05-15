@@ -1,3 +1,5 @@
+export type { DeviceInfo } from './fingerprint'
+
 export interface NohmoConfig {
   projectId: string
   apiKey: string

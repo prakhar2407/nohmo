@@ -1,5 +1,5 @@
 import { AutoCapture } from './autocapture'
-import { getDeviceId, getStableId } from './fingerprint'
+import { getDeviceId, getDeviceInfo, getStableId } from './fingerprint'
 import { EventQueue } from './queue'
 import type { NohmoConfig, NohmoEvent, NohmoState } from './types'
 
@@ -57,7 +57,7 @@ export class NohmoTracker {
     }
 
     try {
-      const [deviceId, stableId] = await Promise.all([getDeviceId(), getStableId()])
+      const [deviceId, stableId] = [getDeviceId(), await getStableId()]
 
       let canonicalId = deviceId
       let userId: string | null = null
@@ -77,6 +77,7 @@ export class NohmoTracker {
               knownUserId: localStorage.getItem('_nohmo_uid') ?? undefined,
               page: typeof window !== 'undefined' ? window.location.pathname : '',
               referrer: typeof document !== 'undefined' ? document.referrer : '',
+              deviceInfo: getDeviceInfo(),
             }),
           }
         )
