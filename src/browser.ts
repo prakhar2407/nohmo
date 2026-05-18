@@ -18,13 +18,14 @@ declare global {
     ?? (document.querySelector('script[data-project]') as HTMLScriptElement | null)
   const projectId = script?.getAttribute('data-project') ?? ''
   const apiKey = script?.getAttribute('data-api-key') ?? ''
+  const debug = script?.getAttribute('data-debug') === 'true'
 
   if (!projectId || !apiKey) {
     console.warn('[Nohmo] Missing data-project or data-api-key on <script> tag.')
     return
   }
 
-  const tracker = new NohmoTracker({ projectId, apiKey })
+  const tracker = new NohmoTracker({ projectId, apiKey, debug })
   tracker.init()
 
   window.nohmo = {

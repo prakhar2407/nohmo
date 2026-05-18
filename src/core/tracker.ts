@@ -106,8 +106,23 @@ export class NohmoTracker {
       }
       this.pendingEvents = []
 
+      if (this.config.autoTimeSpent) {
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) this.trackTimeSpent()
+        })
+        window.addEventListener('pagehide', () => this.trackTimeSpent())
+      }
+
       this.queue.start()
       this.initResolve()
+
+      if (this.config.autoPageView) {
+        this.trackPageView()
+      }
+
+      if (this.config.autoScrollDepth) {
+        this.startScrollTracking()
+      }
 
       if (this.config.autoCapture) {
         this.autoCapture = new AutoCapture(this)
