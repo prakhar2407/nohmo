@@ -13,7 +13,9 @@ declare global {
 }
 
 ;(function () {
-  const script = document.currentScript as HTMLScriptElement | null
+  // document.currentScript is null for deferred scripts — fall back to querying by attribute
+  const script = (document.currentScript as HTMLScriptElement | null)
+    ?? (document.querySelector('script[data-project]') as HTMLScriptElement | null)
   const projectId = script?.getAttribute('data-project') ?? ''
   const apiKey = script?.getAttribute('data-api-key') ?? ''
 
