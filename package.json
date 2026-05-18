@@ -25,10 +25,10 @@
       "optional": true
     }
   },
-  "dependencies": {},
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^11.0.0",
     "@types/react": "^18.0.0",
     "next": "^16.2.4",

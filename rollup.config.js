@@ -3,6 +3,7 @@ import commonjs from '@rollup/plugin-commonjs'
 import typescript from '@rollup/plugin-typescript'
 import peerDepsExternal from 'rollup-plugin-peer-deps-external'
 import dts from 'rollup-plugin-dts'
+import terser from '@rollup/plugin-terser'
 
 export default [
   {
@@ -34,5 +35,19 @@ export default [
     output: [{ file: 'dist/index.d.ts', format: 'esm' }],
     plugins: [dts()],
     external: ['react', 'react-dom', 'next/navigation'],
+  },
+  {
+    input: 'src/browser.ts',
+    output: {
+      file: 'dist/n.min.js',
+      format: 'iife',
+      name: 'NohmoScript',
+    },
+    plugins: [
+      resolve({ browser: true }),
+      commonjs(),
+      typescript({ tsconfig: './tsconfig.build.json' }),
+      terser(),
+    ],
   },
 ]

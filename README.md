@@ -1,6 +1,6 @@
 # nohmo
 
-Official analytics SDK for [Nohmo](https://www.nohmo.in) — device tracking, session journeys, UTM attribution, and real-time event streaming for React and Next.js.
+Official analytics SDK for [Nohmo](https://www.nohmo.in) — device tracking, session journeys, UTM attribution, and real-time event streaming for React, Next.js, and plain HTML / Django templates.
 
 ## Install
 
@@ -73,6 +73,42 @@ function App() {
 ```
 
 No automatic route-change tracking — use `usePageView('/path')` in each page component or call `send('PAGE_VIEW', …)` manually on route changes.
+
+### Plain HTML / Django templates (no build step)
+
+Add one script tag. No npm, no bundler, no build step required.
+
+```html
+<!-- In your <head> or before </body> -->
+<script
+  src="https://cdn.jsdelivr.net/npm/nohmo@latest/dist/n.min.js"
+  data-project="proj_xxxx"
+  data-api-key="pk_xxxx"
+  defer
+></script>
+```
+
+That's it. Page views, clicks, scroll depth, time spent, and rage-clicks are tracked automatically the moment the script loads.
+
+**Track custom events from any inline script:**
+
+```html
+<button onclick="window.nohmo.send('signup_clicked', { plan: 'pro' })">
+  Sign up
+</button>
+```
+
+**Identify users (e.g. in a Django template after login):**
+
+```html
+{% if user.is_authenticated %}
+<script>
+  window.nohmo.identify('{{ user.pk }}', '{{ user.email }}')
+</script>
+{% endif %}
+```
+
+`window.nohmo` is available as soon as the script finishes loading (`defer` guarantees it runs after the DOM is ready). For inline scripts that run before the page finishes loading, use `window.addEventListener('load', () => { window.nohmo.send(...) })`.
 
 ---
 
