@@ -6,7 +6,9 @@ export interface UTMParams {
   content?: string
 }
 
-export function getUTMParams(): UTMParams {
+const DEFAULT_ATTRIBUTION_PARAMS = ['ref']
+
+export function getUTMParams(attributionParams: string[] = DEFAULT_ATTRIBUTION_PARAMS): UTMParams {
   if (typeof window === 'undefined') return {}
 
   const params = new URLSearchParams(window.location.search)
@@ -24,13 +26,27 @@ export function getUTMParams(): UTMParams {
   if (t)  fromUrl.term     = t
   if (co) fromUrl.content  = co
 
-  // Current URL has UTM — persist for the rest of this session
+  // No utm_* params — walk the custom attribution list and use the first match.
+  // source = the param value, medium = the param name so it's identifiable in
+  // the dashboard (e.g. ?reference=META_ADS_1 → source="META_ADS_1", medium="reference").
+  if (Object.keys(fromUrl).length === 0) {
+    for (const name of attributionParams) {
+      const val = params.get(name)
+      if (val) {
+        fromUrl.source = val
+        fromUrl.medium = name
+        break
+      }
+    }
+  }
+
+  // Current URL has attribution — persist for the rest of this session
   if (Object.keys(fromUrl).length > 0) {
     try { sessionStorage.setItem('_nohmo_utm', JSON.stringify(fromUrl)) } catch {}
     return fromUrl
   }
 
-  // No UTM on this page — use what was captured on the landing page
+  // No attribution on this page — use what was captured on the landing page
   try {
     const stored = sessionStorage.getItem('_nohmo_utm')
     if (stored) return JSON.parse(stored) as UTMParams

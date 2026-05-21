@@ -33,6 +33,7 @@ export class NohmoTracker {
       autoScrollDepth: true,
       autoTimeSpent: true,
       autoCapture: true,
+      attributionParams: ['ref'],
       ...config,
     }
 
@@ -83,10 +84,13 @@ export class NohmoTracker {
           }
         )
 
-        const json = await res.json() as { success: boolean; data?: { deviceId?: string; userId?: string } }
+        const json = await res.json() as { success: boolean; data?: { deviceId?: string; userId?: string; attributionParams?: string[] } }
         const respData = json.data ?? {}
         canonicalId = respData.deviceId ?? deviceId
         userId = respData.userId ?? null
+        if (respData.attributionParams?.length) {
+          this.config.attributionParams = respData.attributionParams
+        }
 
         if (canonicalId !== deviceId) {
           localStorage.setItem('_nohmo_did', canonicalId)
@@ -138,7 +142,7 @@ export class NohmoTracker {
   }
 
   send(event: string, data: Record<string, unknown> = {}) {
-    const utm = getUTMParams()
+    const utm = getUTMParams(this.config.attributionParams)
     const partial: PartialEvent = {
       userId: this.state.userId,
       sessionId: this.state.sessionId,

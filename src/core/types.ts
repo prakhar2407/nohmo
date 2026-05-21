@@ -10,6 +10,14 @@ export interface NohmoConfig {
   autoScrollDepth?: boolean
   autoTimeSpent?: boolean
   autoCapture?: boolean
+  /**
+   * Custom URL parameter names to treat as attribution when no utm_* params
+   * are present. Checked in order; the first match becomes source and the
+   * param name itself becomes medium so it's identifiable in the dashboard.
+   * Defaults to ['ref'].
+   * Example: ['ref', 'reference', 'src', 'from']
+   */
+  attributionParams?: string[]
 }
 
 export interface NohmoEvent {

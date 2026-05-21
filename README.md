@@ -189,6 +189,23 @@ Supported parameters: `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `u
 
 Parameters are stored in `sessionStorage` so they persist across SPA navigations even when the user lands on a clean URL. Attribution is first-touch per session. Results appear in the **Traffic** dashboard.
 
+### Custom attribution parameters
+
+Not everyone uses full UTM strings. Nohmo lets you define short custom parameter names (e.g. `?ref=`, `?from=`, `?via=`) that are treated as attribution when no standard `utm_*` params are present.
+
+**Configure in the dashboard** — go to **Settings → General → Attribution parameters** and add the parameter names you want to track. Changes take effect on the next page load; no code change or SDK rebuild needed.
+
+```
+# Examples of URLs that will be attributed automatically
+https://yourapp.com?ref=meta_ads          → source: meta_ads, medium: ref
+https://yourapp.com?from=newsletter       → source: newsletter, medium: from
+https://yourapp.com?via=partner_site      → source: partner_site, medium: via
+```
+
+The SDK fetches your configured list from the backend when it initialises, so the same configuration works across every framework (Next.js, React, plain HTML, Django templates) without any local config.
+
+`?ref=` is always supported as a built-in default, even before you add anything in the dashboard.
+
 ---
 
 ## Options
