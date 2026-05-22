@@ -4,6 +4,7 @@ export interface UTMParams {
   campaign?: string
   term?: string
   content?: string
+  _custom?: boolean
 }
 
 const DEFAULT_ATTRIBUTION_PARAMS = ['ref']
@@ -35,6 +36,7 @@ export function getUTMParams(attributionParams: string[] = DEFAULT_ATTRIBUTION_P
       if (val) {
         fromUrl.source = val
         fromUrl.medium = name
+        fromUrl._custom = true
         break
       }
     }
