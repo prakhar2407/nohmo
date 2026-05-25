@@ -27,18 +27,17 @@ export function getUTMParams(attributionParams: string[] = DEFAULT_ATTRIBUTION_P
   if (t)  fromUrl.term     = t
   if (co) fromUrl.content  = co
 
-  // No utm_* params — walk the custom attribution list and use the first match.
-  // source = the param value, medium = the param name so it's identifiable in
-  // the dashboard (e.g. ?reference=META_ADS_1 → source="META_ADS_1", medium="reference").
-  if (Object.keys(fromUrl).length === 0) {
-    for (const name of attributionParams) {
-      const val = params.get(name)
-      if (val) {
-        fromUrl.source = val
-        fromUrl.medium = name
-        fromUrl._custom = true
-        break
-      }
+  // Walk the custom attribution list — if a match is found it takes priority over
+  // utm_source/utm_medium so the user-configured param always wins, even when
+  // standard UTM params are also present (e.g. Meta ads inject both).
+  // Campaign/term/content from UTM are kept; only source+medium are overridden.
+  for (const name of attributionParams) {
+    const val = params.get(name)
+    if (val) {
+      fromUrl.source = val
+      fromUrl.medium = name
+      fromUrl._custom = true
+      break
     }
   }
 
