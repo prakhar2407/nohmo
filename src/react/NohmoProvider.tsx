@@ -35,6 +35,13 @@ export function NohmoProvider({
 }: NohmoProviderProps) {
   const trackerRef = useRef<NohmoTracker | null>(null)
 
+  // Queue for linkUser calls that arrive before the tracker useEffect has run.
+  // This happens when a child component calls linkUser in its own useEffect —
+  // React runs child effects before parent effects, so trackerRef.current is
+  // still null at that point. We drain this queue once the tracker is ready.
+  type PendingLink = [string, string | undefined, Record<string, unknown> | undefined]
+  const pendingLinksRef = useRef<PendingLink[]>([])
+
   useEffect(() => {
     const tracker = new NohmoTracker({
       projectId,
@@ -43,6 +50,17 @@ export function NohmoProvider({
     })
 
     trackerRef.current = tracker
+
+    // Drain any linkUser calls that arrived before this effect ran
+    const pending = pendingLinksRef.current.splice(0)
+    if (pending.length > 0) {
+      // tracker.linkUser already awaits initPromise internally, so it's safe
+      // to call these right away — they'll wait for init to complete
+      for (const [userId, email, meta] of pending) {
+        tracker.linkUser(userId, email, meta)
+      }
+    }
+
     tracker.init()
 
     let cleanupScroll: (() => void) | undefined
@@ -70,7 +88,13 @@ export function NohmoProvider({
     email?: string,
     meta?: Record<string, unknown>
   ) => {
-    await trackerRef.current?.linkUser(userId, email, meta)
+    if (!trackerRef.current) {
+      // Tracker not yet mounted — queue this call.
+      // The useEffect above will drain it once the tracker is initialised.
+      pendingLinksRef.current.push([userId, email, meta])
+      return
+    }
+    await trackerRef.current.linkUser(userId, email, meta)
   }
 
   return (
