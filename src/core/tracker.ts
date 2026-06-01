@@ -200,6 +200,10 @@ export class NohmoTracker {
     }
   }
 
+  trackConversion(slug: string, properties: Record<string, unknown> = {}) {
+    this.send('CONVERSION', { slug, ...properties })
+  }
+
   trackPageView(path?: string) {
     this.send('PAGE_VIEW', {
       path: path ?? (typeof window !== 'undefined' ? window.location.pathname : ''),

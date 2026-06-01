@@ -8,6 +8,7 @@ declare global {
     nohmo: {
       send: (event: string, data?: Record<string, unknown>) => void
       identify: (userId: string, email?: string, meta?: Record<string, unknown>) => void
+      conversion: (slug: string, properties?: Record<string, unknown>) => void
     }
   }
 }
@@ -31,5 +32,6 @@ declare global {
   window.nohmo = {
     send: (event, data = {}) => tracker.send(event, data),
     identify: (userId, email, meta) => void tracker.linkUser(userId, email, meta),
+    conversion: (slug, properties = {}) => tracker.trackConversion(slug, properties),
   }
 })()

@@ -164,6 +164,56 @@ export default function MyPage() {
 
 ---
 
+## Track conversions
+
+Conversions let you measure what matters — signups, deposits, purchases — and see exactly which traffic source (Google Ads, Meta Ads, organic, etc.) drove each one.
+
+### 1. Define goals in the dashboard
+
+Go to **Settings → Conversions** and create a goal. Each goal has a human-readable name and a slug you reference in code:
+
+| Name | Slug |
+|------|------|
+| User Created | `user_created` |
+| Money Deposit | `money_deposit` |
+| Subscription Started | `subscription_started` |
+
+### 2. Call `trackConversion()` in your code
+
+```tsx
+import { useNohmo } from 'nohmo'
+
+export default function SignupSuccess() {
+  const { trackConversion } = useNohmo()
+
+  useEffect(() => {
+    trackConversion('user_created')
+  }, [])
+}
+```
+
+Pass optional properties for richer data:
+
+```tsx
+trackConversion('money_deposit', { amount: 500, currency: 'USD' })
+```
+
+**Plain HTML / Django templates:**
+
+```html
+<script>
+  window.nohmo.conversion('money_deposit', { amount: 500 })
+</script>
+```
+
+### 3. See results in Traffic → Conversions
+
+The **Traffic** page has a **Conversions** tab showing total conversions broken down by UTM source, medium, campaign, and custom attribution parameters. Filter by a specific goal to drill into which channels drive that conversion type.
+
+Attribution is automatic — if the user arrived via `?utm_source=google&utm_medium=cpc`, that conversion is attributed to Google CPC with no extra code.
+
+---
+
 ## What gets tracked automatically
 
 | Event | Trigger | Data |
@@ -243,7 +293,8 @@ The SDK fetches your configured list from the backend when it initialises, so th
 | **Devices** | Every device with browser, OS, screen size, timezone, country, city, last seen, pages visited |
 | **Device journey** | Full chronological event history per device, grouped by session |
 | **Live feed** | Real-time event stream via WebSocket — see who is on your site right now |
-| **Traffic** | Session breakdown by UTM source, medium, and campaign |
+| **Traffic → Attribution** | Session breakdown by UTM source, medium, and campaign |
+| **Traffic → Conversions** | Conversion counts by goal, source, medium, campaign — shows which ads drove results |
 | **Journeys** | All sessions across all devices, sortable by recency |
 
 ## How it works
