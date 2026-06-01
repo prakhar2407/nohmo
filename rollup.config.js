@@ -36,6 +36,39 @@ export default [
     plugins: [dts()],
     external: ['react', 'react-dom', 'next/navigation'],
   },
+  // React Native entry point
+  {
+    input: 'src/react-native/index.ts',
+    output: [
+      {
+        file: 'dist/react-native.cjs.js',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/react-native.esm.js',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    plugins: [
+      peerDepsExternal(),
+      resolve(),
+      commonjs(),
+      typescript({ tsconfig: './tsconfig.build.json' }),
+    ],
+    external: [
+      'react',
+      'react-native',
+      '@react-native-async-storage/async-storage',
+    ],
+  },
+  {
+    input: 'src/react-native/index.ts',
+    output: [{ file: 'dist/react-native.d.ts', format: 'esm' }],
+    plugins: [dts()],
+    external: ['react', 'react-native', '@react-native-async-storage/async-storage'],
+  },
   {
     input: 'src/browser.ts',
     output: {

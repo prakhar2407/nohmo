@@ -2,10 +2,23 @@
   "type": "module",
   "name": "nohmo",
   "version": "0.3.22",
-  "description": "Official analytics SDK for Nohmo — device tracking, session journeys, and event batching for React and Next.js",
+  "description": "Official analytics SDK for Nohmo — device tracking, session journeys, and event batching for React, Next.js, and React Native",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./react-native": {
+      "import": "./dist/react-native.esm.js",
+      "require": "./dist/react-native.cjs.js",
+      "types": "./dist/react-native.d.ts"
+    }
+  },
+  "react-native": "dist/react-native.cjs.js",
   "files": [
     "dist",
     "README.md"
@@ -18,10 +31,21 @@
   },
   "peerDependencies": {
     "react": ">=17.0.0",
-    "react-dom": ">=17.0.0"
+    "react-dom": ">=17.0.0",
+    "react-native": ">=0.70.0",
+    "@react-native-async-storage/async-storage": ">=1.0.0"
   },
   "peerDependenciesMeta": {
     "next": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    },
+    "@react-native-async-storage/async-storage": {
       "optional": true
     }
   },
@@ -43,7 +67,9 @@
     "tracking",
     "nohmo",
     "react",
+    "react-native",
     "nextjs",
+    "mobile",
     "events"
   ],
   "license": "MIT",

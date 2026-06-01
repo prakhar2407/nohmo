@@ -5,7 +5,11 @@ Official analytics SDK for [Nohmo](https://www.nohmo.in) — device tracking, se
 ## Install
 
 ```bash
+# Web (React / Next.js)
 npm install nohmo
+
+# React Native (iOS & Android)
+npm install nohmo @react-native-async-storage/async-storage
 ```
 
 ## Quick start
@@ -161,6 +165,127 @@ export default function MyPage() {
   return <div>…</div>
 }
 ```
+
+---
+
+## React Native (iOS & Android)
+
+Nohmo includes a first-party React Native SDK under `nohmo/react-native`. One package, two platforms.
+
+### Setup
+
+```bash
+npm install nohmo @react-native-async-storage/async-storage
+```
+
+```tsx
+// App.tsx
+import { NohmoProvider } from 'nohmo/react-native'
+
+export default function App() {
+  return (
+    <NohmoProvider
+      projectId="proj_xxxx"
+      apiKey="pk_xxxx"
+      options={{ appVersion: '1.0.0', debug: __DEV__ }}
+    >
+      <YourApp />
+    </NohmoProvider>
+  )
+}
+```
+
+### What gets tracked automatically
+
+| Event | Trigger |
+|-------|---------|
+| `APP_INSTALL` | First time the app ever opens |
+| `APP_OPEN` | Every time the app becomes active |
+| `APP_BACKGROUND` | When the app goes to background, with session duration |
+
+### Track screens
+
+```tsx
+import { useScreenView } from 'nohmo/react-native'
+
+export default function HomeScreen() {
+  useScreenView('Home')   // fires SCREEN_VIEW on mount
+  return <View>…</View>
+}
+```
+
+### Custom events
+
+```tsx
+const { send } = useNohmo()
+
+send('button_tapped', { buttonId: 'cta_signup' })
+send('checkout_started', { cartValue: 49.99 })
+```
+
+### Identify users
+
+```tsx
+const { linkUser } = useNohmo()
+
+// After login
+await linkUser(user.id, user.email, { plan: user.plan })
+```
+
+### Track conversions
+
+```tsx
+const { trackConversion } = useNohmo()
+
+trackConversion('user_created')
+trackConversion('purchase', { amount: 29.99, currency: 'USD' })
+```
+
+### Uninstall detection
+
+Nohmo detects app uninstalls using the same silent-push technique used by AppsFlyer and Adjust.
+
+**1. Upload your Firebase Service Account JSON** in **Settings → App** in your Nohmo dashboard.
+
+**2. Install Firebase Messaging:**
+```bash
+npm install @react-native-firebase/app @react-native-firebase/messaging
+```
+
+**3. Register the push token — one component, zero ongoing maintenance:**
+```tsx
+import { useNohmo } from 'nohmo/react-native'
+import messaging from '@react-native-firebase/messaging'
+
+function PushTokenRegistrar() {
+  const { registerPushToken } = useNohmo()
+
+  useEffect(() => {
+    messaging().getToken().then(registerPushToken)
+    return messaging().onTokenRefresh(registerPushToken) // handles token rotation
+  }, [])
+
+  return null
+}
+```
+
+**How it works:**
+- Every night at **03:00 UTC**, Nohmo sends a silent data-only FCM message to every device that hasn't opened the app in 24h
+- If FCM returns `NotRegistered` → app was uninstalled → device is marked automatically
+- No code needed after the one-time setup
+- Results in **App Analytics → Uninstalls** with daily chart, uninstall rate, and D1/D7/D30 retention
+
+**Accuracy:** ~85–90% — users with push notifications disabled cannot be detected (same limitation as every major analytics SDK).
+
+### Attribution via deep links
+
+Pass UTM params in your deep link URL and the SDK captures them automatically:
+
+```
+yourapp://open?utm_source=meta&utm_medium=cpc&utm_campaign=summer
+```
+
+Attribution appears in **Traffic → Conversions** and is linked to every event in that session.
 
 ---
 
