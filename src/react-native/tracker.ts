@@ -2,7 +2,6 @@ import { AppState, Platform, Dimensions, Linking } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { NohmoRNConfig, NohmoRNEvent } from './types'
 
-const _b = (s: string) => Buffer.from(s, 'base64').toString()
 const _h = 'https://www.nohmo.in'
 const _p = {
   i:  '/api/tracker/identify/',
@@ -26,9 +25,9 @@ function parseDeepLinkUtm(url: string | null): Record<string, string> {
   try {
     const params = new URLSearchParams(url.includes('?') ? url.split('?')[1] : '')
     const utm: Record<string, string> = {}
-    for (const [k, v] of params.entries()) {
+    params.forEach((v, k) => {
       if (k.startsWith('utm_') || k === 'ref') utm[k] = v
-    }
+    })
     return utm
   } catch {
     return {}
