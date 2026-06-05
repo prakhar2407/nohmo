@@ -206,7 +206,6 @@ export default function App() {
 ```
 
 If you skip `storage`, everything works — events are tracked, screens are recorded, users can be identified — you just won't get returning-device recognition after an app kill.
-```
 
 ### What gets tracked automatically
 
