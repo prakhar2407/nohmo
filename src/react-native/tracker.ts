@@ -104,7 +104,9 @@ export class NohmoRNTracker {
               viewportH: screen.height,
               pixelRatio: screen.scale,
               language: 'en',
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              timezone: (typeof Intl !== 'undefined' && typeof Intl.DateTimeFormat === 'function')
+                ? Intl.DateTimeFormat().resolvedOptions().timeZone
+                : 'UTC',
               touch: true,
               platform: Platform.OS,
               appVersion: this.config.appVersion,
