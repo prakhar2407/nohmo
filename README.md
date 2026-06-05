@@ -9,7 +9,10 @@ Official analytics SDK for [Nohmo](https://www.nohmo.in) — device tracking, se
 npm install nohmo
 
 # React Native (iOS & Android)
-npm install nohmo @react-native-async-storage/async-storage
+npm install nohmo
+
+# Optional — recommended for persisting device identity across app restarts
+npm install @react-native-async-storage/async-storage
 ```
 
 ## Quick start
@@ -175,24 +178,34 @@ Nohmo includes a first-party React Native SDK under `nohmo/react-native`. One pa
 ### Setup
 
 ```bash
-npm install nohmo @react-native-async-storage/async-storage
+npm install nohmo
+```
+
+The SDK works out of the box with no additional dependencies. Device identity is kept in memory by default — meaning a new device ID is generated on every app restart. To persist the device ID across restarts (recommended), install `@react-native-async-storage/async-storage` and pass it via the `storage` option:
+
+```bash
+npm install @react-native-async-storage/async-storage
 ```
 
 ```tsx
 // App.tsx
 import { NohmoProvider } from 'nohmo/react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 export default function App() {
   return (
     <NohmoProvider
       projectId="proj_xxxx"
       apiKey="pk_xxxx"
-      options={{ appVersion: '1.0.0', debug: __DEV__ }}
+      options={{ appVersion: '1.0.0', debug: __DEV__, storage: AsyncStorage }}
     >
       <YourApp />
     </NohmoProvider>
   )
 }
+```
+
+If you skip `storage`, everything works — events are tracked, screens are recorded, users can be identified — you just won't get returning-device recognition after an app kill.
 ```
 
 ### What gets tracked automatically
@@ -276,6 +289,16 @@ function PushTokenRegistrar() {
 - Results in **App Analytics → Uninstalls** with daily chart, uninstall rate, and D1/D7/D30 retention
 
 **Accuracy:** ~85–90% — users with push notifications disabled cannot be detected (same limitation as every major analytics SDK).
+
+### React Native options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `appVersion` | `string` | `''` | App version string sent with every event |
+| `flushInterval` | `number` | `5000` | Milliseconds between batch event flushes |
+| `debug` | `boolean` | `false` | Log all SDK activity to the console |
+| `autoAppLifecycle` | `boolean` | `true` | Auto-track `APP_OPEN` and `APP_BACKGROUND` on foreground/background transitions |
+| `storage` | `NohmoStorage` | in-memory | Provide an AsyncStorage-compatible object to persist device identity across app restarts. Pass `AsyncStorage` from `@react-native-async-storage/async-storage`. Without this, a new device ID is generated on every cold start. |
 
 ### Attribution via deep links
 
