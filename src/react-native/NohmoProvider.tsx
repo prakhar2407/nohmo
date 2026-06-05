@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef } from 'react'
 import { NohmoRNTracker } from './tracker'
+import { setAutoCaptureTracker } from './autocapture'
 import type { NohmoRNConfig, NohmoRNContextValue } from './types'
 
 const NohmoRNContext = createContext<NohmoRNContextValue>({
@@ -39,6 +40,7 @@ export function NohmoProvider({
     }
 
     tracker.init()
+    setAutoCaptureTracker(tracker)
 
     return () => { tracker.destroy() }
     // eslint-disable-next-line react-hooks/exhaustive-deps

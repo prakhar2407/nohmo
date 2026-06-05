@@ -216,7 +216,30 @@ If you skip `storage`, everything works — events are tracked, screens are reco
 | `APP_OPEN` | Every time the app becomes active |
 | `APP_BACKGROUND` | When the app goes to background, with session duration |
 
-### Track screens
+### Track screens automatically
+
+The Babel plugin handles this too — no prop changes needed. It detects `<NavigationContainer>` in your JSX and injects `onStateChange` and `onReady` at compile time:
+
+```jsx
+// You write this (unchanged):
+<NavigationContainer ref={navigationRef} theme={navigationTheme}>
+  <RootNavigator />
+</NavigationContainer>
+
+// Plugin compiles it to:
+<NavigationContainer
+  ref={navigationRef}
+  theme={navigationTheme}
+  onStateChange={__nohmoNavStateChange}
+  onReady={__nohmoMakeReady(navigationRef)}
+>
+  <RootNavigator />
+</NavigationContainer>
+```
+
+Everything is driven by the single `plugins: ['nohmo/babel-plugin']` line in `babel.config.js`. No manual prop wiring.
+
+**Manual tracking** — if you prefer per-screen control without the plugin:
 
 ```tsx
 import { useScreenView } from 'nohmo/react-native'
@@ -299,6 +322,45 @@ function PushTokenRegistrar() {
 | `debug` | `boolean` | `false` | Log all SDK activity to the console |
 | `autoAppLifecycle` | `boolean` | `true` | Auto-track `APP_OPEN` and `APP_BACKGROUND` on foreground/background transitions |
 | `storage` | `NohmoStorage` | in-memory | Provide an AsyncStorage-compatible object to persist device identity across app restarts. Pass `AsyncStorage` from `@react-native-async-storage/async-storage`. Without this, a new device ID is generated on every cold start. |
+
+### Autocapture (press events)
+
+Add one line to your Babel config and every `onPress` / `onLongPress` in your app is tracked automatically — no code changes per screen.
+
+```js
+// babel.config.js
+module.exports = {
+  presets: ['module:@react-native/babel-preset'],
+  plugins: ['nohmo/babel-plugin'],  // ← add this
+}
+```
+
+That's it. The plugin rewrites this at build time:
+
+```jsx
+// What you write
+<Pressable onPress={handleBuy}>
+  <Text>Buy now</Text>
+</Pressable>
+```
+
+```jsx
+// What gets compiled (you never see this)
+<Pressable onPress={__nohmoWrap(handleBuy, { c: 'Pressable', t: 'Buy now', f: 'CheckoutScreen', l: 42 })}>
+  <Text>Buy now</Text>
+</Pressable>
+```
+
+**What gets captured automatically:**
+
+| Event | Trigger |
+|-------|---------|
+| `PRESS` | Any `onPress` tap |
+| `LONG_PRESS` | Any `onLongPress` |
+
+Each event includes `component` (e.g. `Pressable`), `text` (button label if it's a static string), `file`, and `line`.
+
+**What it doesn't capture:** dynamic text from variables/state, `onPressIn`/`onPressOut` (intentionally excluded — too noisy), or press handlers inside `node_modules`.
 
 ### Attribution via deep links
 

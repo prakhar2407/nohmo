@@ -16,12 +16,19 @@
       "import": "./dist/react-native.esm.js",
       "require": "./dist/react-native.cjs.js",
       "types": "./dist/react-native.d.ts"
-    }
+    },
+    "./react-native/autocapture": {
+      "import": "./dist/autocapture.esm.js",
+      "require": "./dist/autocapture.cjs.js",
+      "types": "./dist/autocapture.d.ts"
+    },
+    "./babel-plugin": "./babel-plugin.js"
   },
   "react-native": "dist/react-native.cjs.js",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "babel-plugin.js"
   ],
   "scripts": {
     "build": "rollup -c",

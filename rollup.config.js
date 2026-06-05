@@ -69,6 +69,27 @@ export default [
     plugins: [dts()],
     external: ['react', 'react-native', '@react-native-async-storage/async-storage'],
   },
+  // Autocapture runtime (used by the Babel plugin at runtime)
+  {
+    input: 'src/react-native/autocapture.ts',
+    output: [
+      { file: 'dist/autocapture.cjs.js', format: 'cjs', sourcemap: true },
+      { file: 'dist/autocapture.esm.js', format: 'esm', sourcemap: true },
+    ],
+    plugins: [
+      peerDepsExternal(),
+      resolve(),
+      commonjs(),
+      typescript({ tsconfig: './tsconfig.build.json' }),
+    ],
+    external: ['react', 'react-native'],
+  },
+  {
+    input: 'src/react-native/autocapture.ts',
+    output: [{ file: 'dist/autocapture.d.ts', format: 'esm' }],
+    plugins: [dts()],
+    external: ['react', 'react-native'],
+  },
   {
     input: 'src/browser.ts',
     output: {
