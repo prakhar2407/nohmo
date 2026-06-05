@@ -1,6 +1,13 @@
 import { AppState, Platform, Dimensions, Linking } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
-import type { NohmoRNConfig, NohmoRNEvent } from './types'
+import type { NohmoRNConfig, NohmoRNEvent, NohmoStorage } from './types'
+
+function makeMemoryStorage(): NohmoStorage {
+  const store: Record<string, string> = {}
+  return {
+    getItem: async (key) => store[key] ?? null,
+    setItem: async (key, value) => { store[key] = value },
+  }
+}
 
 const _h = 'https://www.nohmo.in'
 const _p = {
@@ -38,6 +45,7 @@ type PartialEvent = Omit<NohmoRNEvent, 'deviceId'>
 
 export class NohmoRNTracker {
   private config: Required<NohmoRNConfig>
+  private storage: NohmoStorage
   private deviceId: string | null = null
   private userId: string | null = null
   private sessionId: string
@@ -57,8 +65,10 @@ export class NohmoRNTracker {
       debug: false,
       autoAppLifecycle: true,
       appVersion: '',
+      storage: makeMemoryStorage(),
       ...config,
     }
+    this.storage = this.config.storage
     this.sessionId = genId('sess')
     this.initPromise = new Promise(r => { this.initResolve = r })
   }
@@ -67,9 +77,9 @@ export class NohmoRNTracker {
     try {
       // Read persisted IDs
       const [storedDeviceId, storedUserId, firstOpenDone, initialUrl] = await Promise.all([
-        AsyncStorage.getItem(KEYS.deviceId),
-        AsyncStorage.getItem(KEYS.userId),
-        AsyncStorage.getItem(KEYS.firstOpen),
+        this.storage.getItem(KEYS.deviceId),
+        this.storage.getItem(KEYS.userId),
+        this.storage.getItem(KEYS.firstOpen),
         Linking.getInitialURL(),
       ])
 
@@ -77,7 +87,7 @@ export class NohmoRNTracker {
 
       // Device ID — generate once, persist forever
       let deviceId = storedDeviceId ?? genId('did')
-      if (!storedDeviceId) await AsyncStorage.setItem(KEYS.deviceId, deviceId)
+      if (!storedDeviceId) await this.storage.setItem(KEYS.deviceId, deviceId)
 
       this.userId = storedUserId ?? null
 
@@ -122,7 +132,7 @@ export class NohmoRNTracker {
       }
 
       this.deviceId = deviceId
-      await AsyncStorage.setItem(KEYS.deviceId, deviceId)
+      await this.storage.setItem(KEYS.deviceId, deviceId)
 
       // Drain buffered pre-init events
       for (const e of this.pendingEvents) {
@@ -132,7 +142,7 @@ export class NohmoRNTracker {
 
       // Track install (only on very first open)
       if (!firstOpenDone) {
-        await AsyncStorage.setItem(KEYS.firstOpen, '1')
+        await this.storage.setItem(KEYS.firstOpen, '1')
         this.send('APP_INSTALL', {
           platform: Platform.OS,
           appVersion: this.config.appVersion,
@@ -206,7 +216,7 @@ export class NohmoRNTracker {
   async linkUser(userId: string, email?: string, meta?: Record<string, unknown>): Promise<void> {
     await this.initPromise
     this.userId = userId
-    await AsyncStorage.setItem(KEYS.userId, userId)
+    await this.storage.setItem(KEYS.userId, userId)
     this._flush()
 
     try {

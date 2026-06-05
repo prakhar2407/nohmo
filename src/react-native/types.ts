@@ -1,3 +1,8 @@
+export interface NohmoStorage {
+  getItem(key: string): Promise<string | null>
+  setItem(key: string, value: string): Promise<void>
+}
+
 export interface NohmoRNConfig {
   projectId: string
   apiKey: string
@@ -5,6 +10,7 @@ export interface NohmoRNConfig {
   flushInterval?: number
   debug?: boolean
   autoAppLifecycle?: boolean
+  storage?: NohmoStorage
 }
 
 export interface NohmoRNEvent {
