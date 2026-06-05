@@ -27,6 +27,7 @@
   "react-native": "dist/react-native.cjs.js",
   "files": [
     "dist",
+    "react-native",
     "README.md",
     "babel-plugin.cjs"
   ],
