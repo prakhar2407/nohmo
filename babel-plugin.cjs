@@ -93,7 +93,10 @@ module.exports = function nohmoPlugin({ types: t }) {
             state.nohmoNavUsed = true
           }
 
-          // Inject onReady using the ref prop value so we can capture the initial screen
+          // Inject onReady using the ref prop value so we can capture the initial screen.
+          // Only inject when the ref is a simple Identifier (e.g. ref={navigationRef}).
+          // Deep-clone the node — reusing the same AST node in two positions causes
+          // malformed code generation on Hermes (ReferenceError: Property 'X' doesn't exist).
           if (!existingPropNames.has('onReady')) {
             const refAttr = attrs.find(
               (a) =>
@@ -103,12 +106,12 @@ module.exports = function nohmoPlugin({ types: t }) {
             )
             if (refAttr && t.isJSXExpressionContainer(refAttr.value)) {
               const refExpr = refAttr.value.expression
-              if (t.isExpression(refExpr) && !t.isJSXEmptyExpression(refExpr)) {
+              if (t.isIdentifier(refExpr)) {
                 attrs.push(
                   t.jsxAttribute(
                     t.jsxIdentifier('onReady'),
                     t.jsxExpressionContainer(
-                      t.callExpression(t.identifier(NAV_READY_ID), [refExpr])
+                      t.callExpression(t.identifier(NAV_READY_ID), [t.cloneNode(refExpr, true)])
                     )
                   )
                 )
