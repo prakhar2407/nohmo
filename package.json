@@ -22,13 +22,13 @@
       "require": "./dist/autocapture.cjs.js",
       "types": "./dist/autocapture.d.ts"
     },
-    "./babel-plugin": "./babel-plugin.js"
+    "./babel-plugin": "./babel-plugin.cjs"
   },
   "react-native": "dist/react-native.cjs.js",
   "files": [
     "dist",
     "README.md",
-    "babel-plugin.js"
+    "babel-plugin.cjs"
   ],
   "scripts": {
     "build": "rollup -c",
