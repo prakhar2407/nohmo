@@ -9,6 +9,7 @@ const NohmoRNContext = createContext<NohmoRNContextValue>({
   trackConversion: () => undefined,
   linkUser: async () => undefined,
   registerPushToken: async () => undefined,
+  setInstallReferrer: async () => undefined,
 })
 
 interface NohmoProviderProps {
@@ -70,8 +71,12 @@ export function NohmoProvider({
     await trackerRef.current?.registerPushToken(token)
   }
 
+  const setInstallReferrer = async (referrerString: string) => {
+    await trackerRef.current?.setInstallReferrer(referrerString)
+  }
+
   return (
-    <NohmoRNContext.Provider value={{ send, trackScreenView, trackConversion, linkUser, registerPushToken }}>
+    <NohmoRNContext.Provider value={{ send, trackScreenView, trackConversion, linkUser, registerPushToken, setInstallReferrer }}>
       {children}
     </NohmoRNContext.Provider>
   )

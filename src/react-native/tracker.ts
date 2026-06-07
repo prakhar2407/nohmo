@@ -18,9 +18,10 @@ const _p = {
 }
 
 const KEYS = {
-  deviceId:  '@nohmo_did',
-  userId:    '@nohmo_uid',
-  firstOpen: '@nohmo_first',
+  deviceId:    '@nohmo_did',
+  userId:      '@nohmo_uid',
+  firstOpen:   '@nohmo_first',
+  installAttr: '@nohmo_install_attr',
 }
 
 function genId(prefix: string) {
@@ -58,6 +59,7 @@ export class NohmoRNTracker {
   private initResolve: () => void = () => {}
   private readonly initPromise: Promise<void>
   private deepLinkUtm: Record<string, string> = {}
+  private installAttr: Record<string, string> = {}
 
   constructor(config: NohmoRNConfig) {
     this.config = {
@@ -76,14 +78,18 @@ export class NohmoRNTracker {
   async init(): Promise<void> {
     try {
       // Read persisted IDs
-      const [storedDeviceId, storedUserId, firstOpenDone, initialUrl] = await Promise.all([
+      const [storedDeviceId, storedUserId, firstOpenDone, initialUrl, storedInstallAttr] = await Promise.all([
         this.storage.getItem(KEYS.deviceId),
         this.storage.getItem(KEYS.userId),
         this.storage.getItem(KEYS.firstOpen),
         Linking.getInitialURL(),
+        this.storage.getItem(KEYS.installAttr),
       ])
 
       this.deepLinkUtm = parseDeepLinkUtm(initialUrl)
+      if (storedInstallAttr) {
+        try { this.installAttr = JSON.parse(storedInstallAttr) } catch { /* ignore */ }
+      }
 
       // Device ID — generate once, persist forever
       let deviceId = storedDeviceId ?? genId('did')
@@ -184,6 +190,7 @@ export class NohmoRNTracker {
       platform: Platform.OS as 'ios' | 'android',
       appVersion: this.config.appVersion,
       ...(Object.keys(this.deepLinkUtm).length > 0 ? { utm: this.deepLinkUtm } : {}),
+      ...(Object.keys(this.installAttr).length > 0 ? { install_utm: this.installAttr } : {}),
     }
 
     if (!this.deviceId) {
@@ -237,6 +244,18 @@ export class NohmoRNTracker {
     }
   }
 
+  async setInstallReferrer(referrerString: string): Promise<void> {
+    await this.initPromise
+    // Already attributed — don't overwrite
+    if (Object.keys(this.installAttr).length > 0) return
+    const parsed = parseDeepLinkUtm('?' + referrerString)
+    if (Object.keys(parsed).length === 0) return
+    this.installAttr = parsed
+    await this.storage.setItem(KEYS.installAttr, JSON.stringify(parsed))
+    this.send('INSTALL_ATTRIBUTED', { ...parsed })
+    this._log('Install attributed:', parsed)
+  }
+
   async registerPushToken(token: string): Promise<void> {
     await this.initPromise
     if (!token || !this.deviceId) return
@@ -285,6 +304,7 @@ export class NohmoRNTracker {
         referrer: e.referrer,
         ts: e.ts,
         ...(e.utm ? { utm: e.utm } : {}),
+        ...(e.install_utm ? { install_utm: e.install_utm } : {}),
       })),
       apiKey: this.config.apiKey,
     })

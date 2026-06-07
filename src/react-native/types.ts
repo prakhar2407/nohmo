@@ -25,6 +25,7 @@ export interface NohmoRNEvent {
   platform: 'ios' | 'android'
   appVersion: string
   utm?: Record<string, string>
+  install_utm?: Record<string, string>
 }
 
 export interface NohmoRNContextValue {
@@ -33,4 +34,5 @@ export interface NohmoRNContextValue {
   trackConversion: (slug: string, properties?: Record<string, unknown>) => void
   linkUser: (userId: string, email?: string, meta?: Record<string, unknown>) => Promise<void>
   registerPushToken: (token: string) => Promise<void>
+  setInstallReferrer: (referrerString: string) => Promise<void>
 }
