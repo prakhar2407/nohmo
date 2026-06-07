@@ -13,6 +13,9 @@ npm install nohmo
 
 # Optional — recommended for persisting device identity across app restarts
 npm install @react-native-async-storage/async-storage
+
+# Optional — enables automatic Play Store install attribution (Android)
+npm install react-native-install-referrer
 ```
 
 ## Quick start
@@ -179,13 +182,15 @@ Nohmo includes a first-party React Native SDK under `nohmo/react-native`. One pa
 
 ```bash
 npm install nohmo
-```
 
-The SDK works out of the box with no additional dependencies. Device identity is kept in memory by default — meaning a new device ID is generated on every app restart. To persist the device ID across restarts (recommended), install `@react-native-async-storage/async-storage` and pass it via the `storage` option:
-
-```bash
+# Recommended — persists device identity across app restarts
 npm install @react-native-async-storage/async-storage
+
+# Optional — enables automatic Play Store install attribution (Android only)
+npm install react-native-install-referrer
 ```
+
+The SDK works out of the box with no additional dependencies. Without `@react-native-async-storage/async-storage` a new device ID is generated on every cold start.
 
 ```tsx
 // App.tsx
@@ -214,6 +219,7 @@ If you skip `storage`, everything works — events are tracked, screens are reco
 | `APP_INSTALL` | First time the app ever opens |
 | `APP_OPEN` | Every time the app becomes active |
 | `APP_BACKGROUND` | When the app goes to background, with session duration |
+| `INSTALL_ATTRIBUTED` | When Play Store referrer is read and attribution is resolved (Android, requires `react-native-install-referrer`) |
 
 ### Track screens automatically
 
@@ -360,6 +366,43 @@ That's it. The plugin rewrites this at build time:
 Each event includes `component` (e.g. `Pressable`), `text` (button label if it's a static string), `file`, and `line`.
 
 **What it doesn't capture:** dynamic text from variables/state, `onPressIn`/`onPressOut` (intentionally excluded — too noisy), or press handlers inside `node_modules`.
+
+### Install attribution (Play Store — Android)
+
+Nohmo uses the same deterministic attribution mechanism as AppsFlyer and Adjust — a click UUID embedded in the Play Store referrer param. No GAID or fingerprinting required.
+
+**How it works end-to-end:**
+
+1. **Build a tracking link** in **Settings → App → Attribution Link Builder** in your Nohmo dashboard. Fill in your UTM fields and copy the generated link:
+   ```
+   https://www.nohmo.in/api/click/<project-code>/?utm_source=facebook&utm_medium=cpc&utm_campaign=summer
+   ```
+
+2. **Use the link in your ad.** When a user clicks it, Nohmo records the click and redirects them to your Play Store URL with a referrer param:
+   ```
+   https://play.google.com/store/apps/details?id=com.yourapp&referrer=utm_source%3Dfacebook%26nohmo_click%3D<uuid>
+   ```
+   Google Play preserves this referrer and delivers it to the app on first open.
+
+3. **Install `react-native-install-referrer`:**
+   ```bash
+   npm install react-native-install-referrer
+   ```
+   That's it. The Nohmo SDK reads the referrer automatically on first open, sends it to the backend, and the backend matches the install to the exact click — **zero code needed in your app**.
+
+4. **Results appear** in **App Analytics → Install Attribution** with a breakdown by source, campaign, and match type.
+
+**Attribution priority:**
+
+| Priority | Method | Accuracy |
+|----------|--------|----------|
+| 1 | `nohmo_click` UUID in Play Store referrer | 100% deterministic |
+| 2 | GAID / IDFA match | Deterministic |
+| 3 | UTMs in referrer (no click ID) | High |
+| 4 | IP + platform within 24h | Probabilistic |
+| 5 | No match | Organic |
+
+> **iOS note:** The App Store does not support a referrer param, so iOS attribution uses probabilistic (IP match) or GAID/IDFA matching only.
 
 ### Attribution via deep links
 

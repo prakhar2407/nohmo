@@ -41,7 +41,8 @@
     "react": ">=17.0.0",
     "react-dom": ">=17.0.0",
     "react-native": ">=0.70.0",
-    "@react-native-async-storage/async-storage": ">=1.0.0"
+    "@react-native-async-storage/async-storage": ">=1.0.0",
+    "react-native-install-referrer": ">=2.0.0"
   },
   "peerDependenciesMeta": {
     "next": {
@@ -54,6 +55,9 @@
       "optional": true
     },
     "@react-native-async-storage/async-storage": {
+      "optional": true
+    },
+    "react-native-install-referrer": {
       "optional": true
     }
   },

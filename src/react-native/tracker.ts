@@ -1,6 +1,8 @@
 import { AppState, Platform, Dimensions, Linking } from 'react-native'
 import type { NohmoRNConfig, NohmoRNEvent, NohmoStorage } from './types'
 
+declare function require(id: string): any
+
 function makeMemoryStorage(): NohmoStorage {
   const store: Record<string, string> = {}
   return {
@@ -15,6 +17,7 @@ const _p = {
   t:  '/api/tracker/track/',
   l:  '/api/tracker/link-user/',
   pt: '/api/tracker/push-token/',
+  a:  '/api/tracker/attribute/',
 }
 
 const KEYS = {
@@ -154,6 +157,12 @@ export class NohmoRNTracker {
           appVersion: this.config.appVersion,
           osVersion: String(Platform.Version),
         })
+
+        // Auto-read Play Store install referrer (Android only)
+        // Requires react-native-install-referrer peer dep — silently skipped if not installed
+        if (Platform.OS === 'android') {
+          await this._autoReadInstallReferrer()
+        }
       }
 
       // Track open
@@ -254,6 +263,35 @@ export class NohmoRNTracker {
     await this.storage.setItem(KEYS.installAttr, JSON.stringify(parsed))
     this.send('INSTALL_ATTRIBUTED', { ...parsed })
     this._log('Install attributed:', parsed)
+
+    // Report to backend for deterministic click matching
+    try {
+      await fetch(`${_h}${_p.a}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': this.config.apiKey },
+        body: JSON.stringify({
+          deviceId: this.deviceId,
+          installReferrer: referrerString,
+          platform: Platform.OS,
+        }),
+      })
+    } catch { /* non-critical */ }
+  }
+
+  private async _autoReadInstallReferrer(): Promise<void> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mod = require('react-native-install-referrer')
+      const InstallReferrer = mod.default ?? mod.InstallReferrer ?? mod
+      await new Promise<void>((resolve) => {
+        try {
+          InstallReferrer.getInstallReferrer((err: unknown, referrer: string) => {
+            if (!err && referrer) this.setInstallReferrer(referrer)
+            resolve()
+          })
+        } catch { resolve() }
+      })
+    } catch { /* package not installed — skip */ }
   }
 
   async registerPushToken(token: string): Promise<void> {
