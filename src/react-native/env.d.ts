@@ -34,6 +34,8 @@ declare module 'react-native' {
   export const Linking: {
     getInitialURL: () => Promise<string | null>
   }
+
+  export const NativeModules: Record<string, Record<string, unknown>>
 }
 
 declare module '@react-native-async-storage/async-storage' {
