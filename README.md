@@ -13,9 +13,6 @@ npm install nohmo
 
 # Optional — recommended for persisting device identity across app restarts
 npm install @react-native-async-storage/async-storage
-
-# Optional — enables automatic Play Store install attribution (Android)
-npm install react-native-install-referrer
 ```
 
 ## Quick start
@@ -185,9 +182,6 @@ npm install nohmo
 
 # Recommended — persists device identity across app restarts
 npm install @react-native-async-storage/async-storage
-
-# Optional — enables automatic Play Store install attribution (Android only)
-npm install react-native-install-referrer
 ```
 
 The SDK works out of the box with no additional dependencies. Without `@react-native-async-storage/async-storage` a new device ID is generated on every cold start.
@@ -219,7 +213,7 @@ If you skip `storage`, everything works — events are tracked, screens are reco
 | `APP_INSTALL` | First time the app ever opens |
 | `APP_OPEN` | Every time the app becomes active |
 | `APP_BACKGROUND` | When the app goes to background, with session duration |
-| `INSTALL_ATTRIBUTED` | When Play Store referrer is read and attribution is resolved (Android, requires `react-native-install-referrer`) |
+| `INSTALL_ATTRIBUTED` | Attribution resolved on first open — Play Store referrer on Android, system pasteboard on iOS (built-in, no extra packages) |
 
 ### Track screens automatically
 
@@ -367,9 +361,9 @@ Each event includes `component` (e.g. `Pressable`), `text` (button label if it's
 
 **What it doesn't capture:** dynamic text from variables/state, `onPressIn`/`onPressOut` (intentionally excluded — too noisy), or press handlers inside `node_modules`.
 
-### Install attribution (Play Store — Android)
+### Install attribution (Android + iOS)
 
-Nohmo uses the same deterministic attribution mechanism as AppsFlyer and Adjust — a click UUID embedded in the Play Store referrer param. No GAID or fingerprinting required.
+Nohmo uses the same deterministic attribution mechanism as AppsFlyer and Adjust. On Android, a click UUID is embedded in the Play Store referrer param. On iOS, the click-link interstitial writes the UUID to the system pasteboard, which the SDK reads on first open. No GAID or fingerprinting required on either platform.
 
 **How it works end-to-end:**
 
@@ -378,17 +372,11 @@ Nohmo uses the same deterministic attribution mechanism as AppsFlyer and Adjust 
    https://www.nohmo.in/api/click/<project-code>/?utm_source=facebook&utm_medium=cpc&utm_campaign=summer
    ```
 
-2. **Use the link in your ad.** When a user clicks it, Nohmo records the click and redirects them to your Play Store URL with a referrer param:
-   ```
-   https://play.google.com/store/apps/details?id=com.yourapp&referrer=utm_source%3Dfacebook%26nohmo_click%3D<uuid>
-   ```
-   Google Play preserves this referrer and delivers it to the app on first open.
+2. **Use the link in your ad.** When a user clicks it, Nohmo records the click and routes them to the correct store:
+   - **Android:** redirects to your Play Store URL with the click UUID in the referrer param — Google Play delivers this to the app on first open.
+   - **iOS:** serves a brief interstitial page that writes the click UUID to the system pasteboard, then redirects to your App Store URL — the SDK reads and clears it on first open.
 
-3. **Install `react-native-install-referrer`:**
-   ```bash
-   npm install react-native-install-referrer
-   ```
-   That's it. The Nohmo SDK reads the referrer automatically on first open, sends it to the backend, and the backend matches the install to the exact click — **zero code needed in your app**.
+3. **No extra setup needed.** Attribution is built into the Nohmo SDK — the SDK reads the Play Store referrer (Android) or system pasteboard (iOS) automatically on first open and sends it to the backend for matching. **Zero code needed in your app.**
 
 4. **Results appear** in **App Analytics → Install Attribution** with a breakdown by source, campaign, and match type.
 
@@ -396,7 +384,8 @@ Nohmo uses the same deterministic attribution mechanism as AppsFlyer and Adjust 
 
 | Priority | Method | Accuracy |
 |----------|--------|----------|
-| 1 | `nohmo_click` UUID in Play Store referrer | 100% deterministic |
+| 1 (Android) | `nohmo_click` UUID in Play Store referrer | 100% deterministic |
+| 1 (iOS) | `nohmo_click` UUID in system pasteboard | 100% deterministic |
 | 2 | GAID / IDFA match | Deterministic |
 | 3 | UTMs in referrer (no click ID) | High |
 | 4 | IP + platform within 24h | Probabilistic |
