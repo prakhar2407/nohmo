@@ -255,16 +255,21 @@ export class NohmoRNTracker {
 
   async setInstallReferrer(referrerString: string): Promise<void> {
     await this.initPromise
+    if (!referrerString) return
     // Already attributed — don't overwrite
     if (Object.keys(this.installAttr).length > 0) return
-    const parsed = parseDeepLinkUtm('?' + referrerString)
-    if (Object.keys(parsed).length === 0) return
-    this.installAttr = parsed
-    await this.storage.setItem(KEYS.installAttr, JSON.stringify(parsed))
-    this.send('INSTALL_ATTRIBUTED', { ...parsed })
-    this._log('Install attributed:', parsed)
 
-    // Report to backend for deterministic click matching
+    // Parse UTM params for local storage / INSTALL_ATTRIBUTED event
+    const parsed = parseDeepLinkUtm('?' + referrerString)
+    if (Object.keys(parsed).length > 0) {
+      this.installAttr = parsed
+      await this.storage.setItem(KEYS.installAttr, JSON.stringify(parsed))
+      this.send('INSTALL_ATTRIBUTED', { ...parsed })
+      this._log('Install attributed:', parsed)
+    }
+
+    // Always forward the raw string — backend extracts nohmo_click for deterministic matching
+    // even when the referrer contains no utm_* params
     try {
       await fetch(`${_h}${_p.a}`, {
         method: 'POST',
@@ -285,8 +290,8 @@ export class NohmoRNTracker {
       const InstallReferrer = mod.default ?? mod.InstallReferrer ?? mod
       await new Promise<void>((resolve) => {
         try {
-          InstallReferrer.getInstallReferrer((err: unknown, referrer: string) => {
-            if (!err && referrer) this.setInstallReferrer(referrer)
+          InstallReferrer.getInstallReferrer(async (err: unknown, referrer: string) => {
+            if (!err && referrer) await this.setInstallReferrer(referrer)
             resolve()
           })
         } catch { resolve() }
