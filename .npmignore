@@ -1,5 +1,8 @@
 src/
 *.config.js
+!react-native.config.js
+*.podspec
+!Nohmo.podspec
 tsconfig*.json
 node_modules/
 .git/

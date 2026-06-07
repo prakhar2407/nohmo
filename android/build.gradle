@@ -1,0 +1,35 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 34
+    namespace "com.nohmo"
+
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 34
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    // compileOnly: React Native classes are provided by the host app at runtime.
+    // Using 'implementation' would bundle a second copy into the library AAR and
+    // cause duplicate-class errors in the consuming application's build.
+    compileOnly 'com.facebook.react:react-android:+'
+    // Google Play Install Referrer API — bundled directly, no third-party npm package needed
+    implementation 'com.android.installreferrer:installreferrer:2.2'
+}

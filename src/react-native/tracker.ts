@@ -1,7 +1,6 @@
-import { AppState, Platform, Dimensions, Linking } from 'react-native'
+import { AppState, Platform, Dimensions, Linking, NativeModules } from 'react-native'
 import type { NohmoRNConfig, NohmoRNEvent, NohmoStorage } from './types'
 
-declare function require(id: string): any
 
 function makeMemoryStorage(): NohmoStorage {
   const store: Record<string, string> = {}
@@ -63,6 +62,7 @@ export class NohmoRNTracker {
   private readonly initPromise: Promise<void>
   private deepLinkUtm: Record<string, string> = {}
   private installAttr: Record<string, string> = {}
+  private installAttrAttempted = false
 
   constructor(config: NohmoRNConfig) {
     this.config = {
@@ -158,11 +158,11 @@ export class NohmoRNTracker {
           osVersion: String(Platform.Version),
         })
 
-        // Auto-read Play Store install referrer (Android only)
-        // Requires react-native-install-referrer peer dep — silently skipped if not installed
-        if (Platform.OS === 'android') {
-          await this._autoReadInstallReferrer()
-        }
+        // Attempt attribution on all platforms:
+        //   Android — reads Play Store referrer via native module (deterministic)
+        //   iOS     — reads pasteboard token written by the Nohmo click-link page (deterministic)
+        //   Both    — fall back to a backend attribution ping for probabilistic IP matching
+        await this._autoReadInstallReferrer()
       }
 
       // Track open
@@ -254,10 +254,14 @@ export class NohmoRNTracker {
   }
 
   async setInstallReferrer(referrerString: string): Promise<void> {
-    await this.initPromise
+    // Skip the await when deviceId is already set — avoids a deadlock when this
+    // is called from within init() via _autoReadInstallReferrer (initResolve()
+    // hasn't fired yet at that point, so awaiting initPromise would hang forever).
+    if (!this.deviceId) await this.initPromise
     if (!referrerString) return
-    // Already attributed — don't overwrite
-    if (Object.keys(this.installAttr).length > 0) return
+    // Guard covers both UTM-based and nohmo_click-only referrers
+    if (this.installAttrAttempted) return
+    this.installAttrAttempted = true
 
     // Parse UTM params for local storage / INSTALL_ATTRIBUTED event
     const parsed = parseDeepLinkUtm('?' + referrerString)
@@ -284,19 +288,36 @@ export class NohmoRNTracker {
   }
 
   private async _autoReadInstallReferrer(): Promise<void> {
+    // Android: Play Store preserves the referrer query string set by ClickView.
+    // iOS: pasteboard token written by the Nohmo click-link interstitial page.
+    // Both expose the same NativeModules.NohmoInstallReferrer.getReferrer() API.
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mod = require('react-native-install-referrer')
-      const InstallReferrer = mod.default ?? mod.InstallReferrer ?? mod
-      await new Promise<void>((resolve) => {
-        try {
-          InstallReferrer.getInstallReferrer(async (err: unknown, referrer: string) => {
-            if (!err && referrer) await this.setInstallReferrer(referrer)
-            resolve()
-          })
-        } catch { resolve() }
+      const mod = NativeModules.NohmoInstallReferrer
+      if (mod?.getReferrer) {
+        const referrer: string = await mod.getReferrer()
+        if (referrer) {
+          await this.setInstallReferrer(referrer)
+          return
+        }
+      }
+    } catch { /* native module unavailable */ }
+
+    // Fallback: ping the attribution endpoint with no referrer string so the
+    // backend can attempt probabilistic IP matching (covers iOS users who didn't
+    // tap the interstitial button, or any platform without the native module).
+    if (this.installAttrAttempted) return
+    this.installAttrAttempted = true
+    try {
+      await fetch(`${_h}${_p.a}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': this.config.apiKey },
+        body: JSON.stringify({
+          deviceId: this.deviceId,
+          installReferrer: '',
+          platform: Platform.OS,
+        }),
       })
-    } catch { /* package not installed — skip */ }
+    } catch { /* non-critical */ }
   }
 
   async registerPushToken(token: string): Promise<void> {

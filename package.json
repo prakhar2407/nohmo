@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "nohmo",
-  "version": "0.3.38",
+  "version": "0.3.41",
   "description": "Official analytics SDK for Nohmo — device tracking, session journeys, and event batching for React, Next.js, and React Native",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
@@ -28,6 +28,10 @@
   "files": [
     "dist",
     "react-native",
+    "android",
+    "ios",
+    "Nohmo.podspec",
+    "react-native.config.js",
     "README.md",
     "babel-plugin.cjs"
   ],
@@ -41,8 +45,7 @@
     "react": ">=17.0.0",
     "react-dom": ">=17.0.0",
     "react-native": ">=0.70.0",
-    "@react-native-async-storage/async-storage": ">=1.0.0",
-    "react-native-install-referrer": ">=1.0.0"
+    "@react-native-async-storage/async-storage": ">=1.0.0"
   },
   "peerDependenciesMeta": {
     "next": {
@@ -55,9 +58,6 @@
       "optional": true
     },
     "@react-native-async-storage/async-storage": {
-      "optional": true
-    },
-    "react-native-install-referrer": {
       "optional": true
     }
   },
