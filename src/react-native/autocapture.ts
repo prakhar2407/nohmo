@@ -68,8 +68,34 @@ export function makeNohmoReadyHandler(
 // ── Press autocapture (injected by babel-plugin) ───────────────────────────
 
 /**
+ * Coerce a captured label to clean text. A dynamic label expression can resolve
+ * at runtime to a React element or object (e.g. `label={icon}`, or a template
+ * fragment that is itself an element) — `String()` would turn that into the
+ * useless "[object Object]". So: drop non-string/object values entirely, and
+ * strip any "[object Object]" that leaked into an otherwise-good string before
+ * trimming and capping. Returns null when nothing meaningful remains.
+ */
+function _coerceLabel(v: unknown): string | null {
+  let s: string
+  if (typeof v === 'string') s = v
+  else if (typeof v === 'number' || typeof v === 'boolean') s = String(v)
+  else return null // null/undefined, objects, React elements, arrays, functions
+  s = s.replace(/\[object Object\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80)
+  return s || null
+}
+
+// Marks a function as already wrapped, so nested wraps can de-duplicate.
+const _WRAPPED = '__nohmoWrapped__'
+
+/**
  * Injected by the Nohmo Babel plugin around every onPress / onLongPress.
  * Fires a PRESS or LONG_PRESS event then calls the original handler.
+ *
+ * De-duplication: design-system buttons (e.g. <Button> → internal <Pressable
+ * onPress={onPress}/>) thread the app's handler down, so the plugin wraps the
+ * SAME handler at two levels. To avoid a double press (and the inner component's
+ * "[object Object]" label), a wrapper whose handler is ITSELF a wrapper stays
+ * silent — the app-level wrapper it delegates to carries the real label.
  */
 export function __nohmoWrap<T extends ((...args: unknown[]) => unknown) | null | undefined>(
   handler: T,
@@ -81,20 +107,20 @@ export function __nohmoWrap<T extends ((...args: unknown[]) => unknown) | null |
     l?: number         // line number
   }
 ): (...args: unknown[]) => unknown {
-  return (...args: unknown[]) => {
+  const wrapped = (...args: unknown[]) => {
     const s = _getSender()
-    if (s) {
-      // Dynamic prop labels (i18n / ternary / template) resolve at runtime and
-      // may be non-string or unbounded — coerce and cap before sending.
-      const text =
-        meta.t == null ? null : String(meta.t).replace(/\s+/g, ' ').trim().slice(0, 80)
+    const handlerIsWrapped =
+      typeof handler === 'function' && (handler as unknown as Record<string, unknown>)[_WRAPPED] === true
+    if (s && !handlerIsWrapped) {
       s.send(meta.p === 'onLongPress' ? 'LONG_PRESS' : 'PRESS', {
         component: meta.c ?? null,
-        text,
+        text: _coerceLabel(meta.t),
         file: meta.f ?? null,
         line: meta.l ?? null,
       })
     }
     return (handler as ((...a: unknown[]) => unknown) | null | undefined)?.(...args)
   }
+  ;(wrapped as unknown as Record<string, unknown>)[_WRAPPED] = true
+  return wrapped
 }
