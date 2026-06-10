@@ -76,7 +76,7 @@ export function __nohmoWrap<T extends ((...args: unknown[]) => unknown) | null |
   meta: {
     c?: string | null  // component name
     p?: string         // prop name (onPress | onLongPress)
-    t?: string | null  // static text extracted from children
+    t?: unknown        // text — static (children/prop) or a runtime prop value
     f?: string | null  // filename (without extension)
     l?: number         // line number
   }
@@ -84,9 +84,13 @@ export function __nohmoWrap<T extends ((...args: unknown[]) => unknown) | null |
   return (...args: unknown[]) => {
     const s = _getSender()
     if (s) {
+      // Dynamic prop labels (i18n / ternary / template) resolve at runtime and
+      // may be non-string or unbounded — coerce and cap before sending.
+      const text =
+        meta.t == null ? null : String(meta.t).replace(/\s+/g, ' ').trim().slice(0, 80)
       s.send(meta.p === 'onLongPress' ? 'LONG_PRESS' : 'PRESS', {
         component: meta.c ?? null,
-        text: meta.t ?? null,
+        text,
         file: meta.f ?? null,
         line: meta.l ?? null,
       })
