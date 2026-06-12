@@ -12,11 +12,12 @@ function makeMemoryStorage(): NohmoStorage {
 
 const _h = 'https://www.nohmo.in'
 const _p = {
-  i:  '/api/tracker/identify/',
-  t:  '/api/tracker/track/',
-  l:  '/api/tracker/link-user/',
-  pt: '/api/tracker/push-token/',
-  a:  '/api/tracker/attribute/',
+  i:   '/api/tracker/identify/',
+  t:   '/api/tracker/track/',
+  l:   '/api/tracker/link-user/',
+  pt:  '/api/tracker/push-token/',
+  a:   '/api/tracker/attribute/',
+  inv: '/api/tracker/invite-link/',
 }
 
 const KEYS = {
@@ -63,6 +64,7 @@ export class NohmoRNTracker {
   private deepLinkUtm: Record<string, string> = {}
   private installAttr: Record<string, string> = {}
   private installAttrAttempted = false
+  private inviteCache: Record<string, string> = {}
 
   constructor(config: NohmoRNConfig) {
     this.config = {
@@ -227,6 +229,62 @@ export class NohmoRNTracker {
 
   trackConversion(slug: string, properties: Record<string, unknown> = {}) {
     this.send('CONVERSION', { slug, ...properties })
+  }
+
+  /**
+   * Build a short, shareable Nohmo attribution link for "invite a friend" flows.
+   * Share THIS (not the raw store URL) so installs are attributed back to the
+   * sharer: the current linked user id rides along as utm_content, so you can
+   * see who referred whom. Returns a tidy short URL (https://www.nohmo.in/api/l/
+   * <code>); the same user + options always resolves to the same code. Falls back
+   * to the full click URL if the device is offline. Call linkUser first so the
+   * referrer is captured.
+   *
+   * @example
+   *   const link = await nohmo.buildInviteLink({ channel: 'whatsapp' })
+   *   Share.share({ message: `Join me! ${link}` })
+   */
+  async buildInviteLink(opts: { channel?: string; campaign?: string; source?: string } = {}): Promise<string> {
+    const source = opts.source || 'referral'
+    const key = `${source}|${opts.channel || ''}|${opts.campaign || ''}|${this.userId || ''}`
+    if (this.inviteCache[key]) return this.inviteCache[key]
+
+    try {
+      const res = await fetch(`${_h}${_p.inv}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': this.config.apiKey },
+        body: JSON.stringify({
+          source,
+          medium: opts.channel || '',
+          campaign: opts.campaign || '',
+          content: this.userId || '',
+        }),
+      })
+      const data = await res.json()
+      if (data && data.shortCode) {
+        const url = `${_h}/api/l/${data.shortCode}/`
+        this.inviteCache[key] = url
+        return url
+      }
+    } catch (err) {
+      this._log('buildInviteLink: short link unavailable, using full URL:', err)
+    }
+
+    // Offline / error fallback — the long but always-working click URL
+    return this._fullInviteLink(opts)
+  }
+
+  private _fullInviteLink(opts: { channel?: string; campaign?: string; source?: string }): string {
+    const parts: string[] = []
+    const add = (key: string, value?: string | null) => {
+      if (value) parts.push(`${key}=${encodeURIComponent(value)}`)
+    }
+    add('utm_source', opts.source || 'referral')
+    add('utm_medium', opts.channel)
+    add('utm_campaign', opts.campaign)
+    add('utm_content', this.userId)
+    const qs = parts.length ? `?${parts.join('&')}` : ''
+    return `${_h}/api/click/${this.config.projectId}/${qs}`
   }
 
   async linkUser(userId: string, email?: string, meta?: Record<string, unknown>): Promise<void> {

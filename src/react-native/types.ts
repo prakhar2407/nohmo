@@ -32,6 +32,7 @@ export interface NohmoRNContextValue {
   send: (event: string, data?: Record<string, unknown>) => void
   trackScreenView: (screenName: string) => void
   trackConversion: (slug: string, properties?: Record<string, unknown>) => void
+  buildInviteLink: (opts?: { channel?: string; campaign?: string; source?: string }) => Promise<string>
   linkUser: (userId: string, email?: string, meta?: Record<string, unknown>) => Promise<void>
   registerPushToken: (token: string) => Promise<void>
   setInstallReferrer: (referrerString: string) => Promise<void>

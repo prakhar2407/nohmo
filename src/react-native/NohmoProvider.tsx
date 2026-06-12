@@ -7,6 +7,7 @@ const NohmoRNContext = createContext<NohmoRNContextValue>({
   send: () => undefined,
   trackScreenView: () => undefined,
   trackConversion: () => undefined,
+  buildInviteLink: async () => '',
   linkUser: async () => undefined,
   registerPushToken: async () => undefined,
   setInstallReferrer: async () => undefined,
@@ -59,6 +60,10 @@ export function NohmoProvider({
     trackerRef.current?.trackConversion(slug, properties)
   }
 
+  const buildInviteLink = async (opts?: { channel?: string; campaign?: string; source?: string }) => {
+    return (await trackerRef.current?.buildInviteLink(opts)) ?? ''
+  }
+
   const linkUser = async (userId: string, email?: string, meta?: Record<string, unknown>) => {
     if (!trackerRef.current) {
       pendingLinksRef.current.push([userId, email, meta])
@@ -76,7 +81,7 @@ export function NohmoProvider({
   }
 
   return (
-    <NohmoRNContext.Provider value={{ send, trackScreenView, trackConversion, linkUser, registerPushToken, setInstallReferrer }}>
+    <NohmoRNContext.Provider value={{ send, trackScreenView, trackConversion, buildInviteLink, linkUser, registerPushToken, setInstallReferrer }}>
       {children}
     </NohmoRNContext.Provider>
   )

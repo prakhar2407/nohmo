@@ -367,10 +367,11 @@ Nohmo uses the same deterministic attribution mechanism as AppsFlyer and Adjust.
 
 **How it works end-to-end:**
 
-1. **Build a tracking link** in **Settings → App → Attribution Link Builder** in your Nohmo dashboard. Fill in your UTM fields and copy the generated link:
+1. **Build a tracking link** in **Settings → App setup → Attribution Link Builder** in your Nohmo dashboard. Fill in your UTM fields and copy the generated link:
    ```
    https://www.nohmo.in/api/click/<project-code>/?utm_source=facebook&utm_medium=cpc&utm_campaign=summer
    ```
+   Click **Save & shorten** to store the link and get a tidy short URL (`https://www.nohmo.in/api/l/<code>`) you can reuse from the **Saved links** list.
 
 2. **Use the link in your ad.** When a user clicks it, Nohmo records the click and routes them to the correct store:
    - **Android:** redirects to your Play Store URL with the click UUID in the referrer param — Google Play delivers this to the app on first open.
@@ -391,7 +392,7 @@ Nohmo uses the same deterministic attribution mechanism as AppsFlyer and Adjust.
 | 4 | IP + platform within 24h | Probabilistic |
 | 5 | No match | Organic |
 
-> **iOS note:** The App Store does not support a referrer param, so iOS attribution uses probabilistic (IP match) or GAID/IDFA matching only.
+> **iOS note:** The App Store has no referrer param, so iOS uses the system pasteboard — deterministic when the user taps through the click interstitial — with GAID/IDFA and probabilistic IP matching as fallbacks.
 
 ### Attribution via deep links
 
@@ -402,6 +403,33 @@ yourapp://open?utm_source=meta&utm_medium=cpc&utm_campaign=summer
 ```
 
 Attribution appears in **Traffic → Conversions** and is linked to every event in that session.
+
+### Invite a friend (referral attribution)
+
+Want installs from in-app sharing — "invite a friend" — attributed back to the user who shared? Share a Nohmo link instead of the raw store URL. `buildInviteLink()` returns a **short** link that carries the current user's id, so you can see exactly who referred whom.
+
+```tsx
+import { Share } from 'react-native'
+import { useNohmo } from 'nohmo/react-native'
+
+function InviteButton() {
+  const { buildInviteLink } = useNohmo()
+
+  const invite = async () => {
+    const link = await buildInviteLink({ channel: 'whatsapp' })
+    // → https://www.nohmo.in/api/l/aB3xK9q
+    await Share.share({ message: `Join me on the app! ${link}` })
+  }
+
+  return <Button title="Invite a friend" onPress={invite} />
+}
+```
+
+- **Call `linkUser()` first** — the sharer's id is captured as `utm_content`. Without it the link is a generic referral link with no referrer.
+- **Returns a short URL** (`/api/l/<code>`). The same user + options always resolves to the same code, and it's cached, so repeated shares never create duplicate links. Offline, it falls back to the full click URL.
+- **Options:** `channel` → `utm_medium` (e.g. `'whatsapp'`), `campaign` → `utm_campaign`, `source` → `utm_source` (defaults to `'referral'`).
+
+When the invitee installs through the link, their device's attribution shows the sharer's id — **deterministic on Android** (Play Install Referrer), **best-effort on iOS** (pasteboard when they tap through the click interstitial, probabilistic otherwise). Requires your **iOS App Store URL** to be set in **Settings → App setup**. Results appear in **App Analytics → Install Attribution** and on each device's **Came from** card.
 
 ---
 
