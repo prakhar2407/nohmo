@@ -89,5 +89,11 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/prakhar2407/nohmo"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "overrides": {
+    "serialize-javascript": "^6.0.2"
   }
 }
