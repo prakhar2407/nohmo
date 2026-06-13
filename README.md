@@ -213,6 +213,7 @@ If you skip `storage`, everything works — events are tracked, screens are reco
 | `APP_INSTALL` | First time the app ever opens |
 | `APP_OPEN` | Every time the app becomes active |
 | `APP_BACKGROUND` | When the app goes to background, with session duration |
+| `TIME_SPENT` | When leaving a screen or backgrounding the app, with seconds on the screen |
 | `INSTALL_ATTRIBUTED` | Attribution resolved on first open — Play Store referrer on Android, system pasteboard on iOS (built-in, no extra packages) |
 
 ### Track screens automatically
@@ -367,7 +368,7 @@ Nohmo uses the same deterministic attribution mechanism as AppsFlyer and Adjust.
 
 **How it works end-to-end:**
 
-1. **Build a tracking link** in **Settings → App setup → Attribution Link Builder** in your Nohmo dashboard. Fill in your UTM fields and copy the generated link:
+1. **Build a tracking link** in **Settings → App → Attribution Link Builder** in your Nohmo dashboard. Fill in your UTM fields and copy the generated link:
    ```
    https://www.nohmo.in/api/click/<project-code>/?utm_source=facebook&utm_medium=cpc&utm_campaign=summer
    ```
@@ -429,7 +430,7 @@ function InviteButton() {
 - **Returns a short URL** (`/api/l/<code>`). The same user + options always resolves to the same code, and it's cached, so repeated shares never create duplicate links. Offline, it falls back to the full click URL.
 - **Options:** `channel` → `utm_medium` (e.g. `'whatsapp'`), `campaign` → `utm_campaign`, `source` → `utm_source` (defaults to `'referral'`).
 
-When the invitee installs through the link, their device's attribution shows the sharer's id — **deterministic on Android** (Play Install Referrer), **best-effort on iOS** (pasteboard when they tap through the click interstitial, probabilistic otherwise). Requires your **iOS App Store URL** to be set in **Settings → App setup**. Results appear in **App Analytics → Install Attribution** and on each device's **Came from** card.
+When the invitee installs through the link, their device's attribution shows the sharer's id — **deterministic on Android** (Play Install Referrer), **best-effort on iOS** (pasteboard when they tap through the click interstitial, probabilistic otherwise). Requires your **iOS App Store URL** to be set in **Settings → App**. Results appear in **App Analytics → Install Attribution** and on each device's **Came from** card.
 
 ---
 
@@ -492,9 +493,13 @@ Attribution is automatic — if the user arrived via `?utm_source=google&utm_med
 | `SCROLL_DEPTH` | At 25 / 50 / 75 / 100% scroll milestones | `depth` |
 | `CLICK` | Click on any interactive element | `tag`, `text`, `href` |
 | `RAGE_CLICK` | Three or more rapid clicks in the same spot | `tag`, `text` |
+| `FORM_SUBMIT` | Submission of any `<form>` | `tag`, `text` |
+| `INPUT_CHANGE` | Change on any `<input>`, `<select>`, or `<textarea>` | `tag`, `text` |
 | `USER_LINKED` | When `linkUser()` is called | `email` |
 
 Disable any category via the `options` prop.
+
+**Privacy:** `FORM_SUBMIT` and `INPUT_CHANGE` never capture field *values* — only that the interaction happened. Inputs marked `data-sensitive`, password fields, and credit-card fields (`autocomplete="cc-*"`) are skipped entirely, as is any element carrying the `data-nohmo-ignore` attribute.
 
 ## UTM attribution
 
@@ -536,7 +541,7 @@ The SDK fetches your configured list from the backend when it initialises, so th
 | `autoPageView` | `boolean` | `true` | Send `PAGE_VIEW` on every route change (Next.js only) |
 | `autoScrollDepth` | `boolean` | `true` | Track scroll depth at 25 / 50 / 75 / 100% |
 | `autoTimeSpent` | `boolean` | `true` | Send `TIME_SPENT` when leaving a page |
-| `autoCapture` | `boolean` | `true` | Capture clicks automatically |
+| `autoCapture` | `boolean` | `true` | Capture clicks, rage-clicks, form submits, and input changes automatically (field values are never captured) |
 
 ```tsx
 <NohmoNextProvider
@@ -562,9 +567,12 @@ The SDK fetches your configured list from the backend when it initialises, so th
 | **Devices** | Every device with browser, OS, screen size, timezone, country, city, last seen, pages visited |
 | **Device journey** | Full chronological event history per device, grouped by session |
 | **Live feed** | Real-time event stream via WebSocket — see who is on your site right now |
-| **Traffic → Attribution** | Session breakdown by UTM source, medium, and campaign |
+| **Events** | GA4-style top actions ranked by count / users / per-user, an activity breakdown by event type, and a live recent-activity feed |
+| **Journeys** | Page flows (which path users take from page to page) plus entry & exit pages with bounce and exit rates |
+| **Traffic → Attribution** | Session breakdown by UTM source, medium, campaign, and custom attribution params |
 | **Traffic → Conversions** | Conversion counts by goal, source, medium, campaign — shows which ads drove results |
-| **Journeys** | All sessions across all devices, sortable by recency |
+| **App analytics** | Installs, DAU/MAU, D1/D7/D30 retention, uninstalls & uninstall rate, reinstalls, crashes, platform split, app versions, top screens, and install attribution |
+| **Settings → Webhooks** | Friction triggers — fire an HMAC-signed HTTP webhook in real time on rage clicks, a friction-score threshold, or a matched event |
 
 ## How it works
 
@@ -576,11 +584,9 @@ The SDK fetches your configured list from the backend when it initialises, so th
 
 ## Pricing
 
-| Plan | Price | Events |
-|------|-------|--------|
-| Starter | Free | 50k/month |
-| Pro | $29/month | 500k/month |
-| Business | $79/month | 5M/month |
+One plan: **$49/month per project** — unlimited events, no per-event overages. Every project starts with a free **4-day trial** (no card required).
+
+> **🎉 Free during early access.** While Nohmo is in early access, the full platform is free. Email **webesttechnologies@gmail.com** and we'll unlock your project at no cost.
 
 [See full pricing →](https://www.nohmo.in/pricing)
 
