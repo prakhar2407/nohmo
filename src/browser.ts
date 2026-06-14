@@ -20,13 +20,15 @@ declare global {
   const projectId = script?.getAttribute('data-project') ?? ''
   const apiKey = script?.getAttribute('data-api-key') ?? ''
   const debug = script?.getAttribute('data-debug') === 'true'
+  // Error/crash capture is on by default; opt out with data-errors="false".
+  const autoErrors = script?.getAttribute('data-errors') !== 'false'
 
   if (!projectId || !apiKey) {
     console.warn('[Nohmo] Missing data-project or data-api-key on <script> tag.')
     return
   }
 
-  const tracker = new NohmoTracker({ projectId, apiKey, debug })
+  const tracker = new NohmoTracker({ projectId, apiKey, debug, autoErrors })
   tracker.init()
 
   window.nohmo = {

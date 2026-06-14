@@ -1,4 +1,5 @@
 import { AutoCapture } from './autocapture'
+import { ErrorCapture } from './errors'
 import { getDeviceId, getDeviceInfo, getStableId } from './fingerprint'
 import { EventQueue } from './queue'
 import type { NohmoConfig, NohmoEvent, NohmoState } from './types'
@@ -20,6 +21,7 @@ export class NohmoTracker {
   private queue: EventQueue
   private pageStart: number = Date.now()
   private autoCapture: AutoCapture | null = null
+  private errorCapture: ErrorCapture | null = null
   // Events queued before init() resolves the canonical deviceId
   private pendingEvents: PartialEvent[] = []
   private initResolve: () => void = () => {}
@@ -33,6 +35,7 @@ export class NohmoTracker {
       autoScrollDepth: true,
       autoTimeSpent: true,
       autoCapture: true,
+      autoErrors: true,
       attributionParams: ['ref'],
       ...config,
     }
@@ -131,6 +134,11 @@ export class NohmoTracker {
       if (this.config.autoCapture) {
         this.autoCapture = new AutoCapture(this)
         this.autoCapture.start()
+      }
+
+      if (this.config.autoErrors) {
+        this.errorCapture = new ErrorCapture(this)
+        this.errorCapture.start()
       }
 
       this.log('Nohmo initialized', this.state)
@@ -299,8 +307,15 @@ export class NohmoTracker {
     return { ...this.state }
   }
 
+  /** Flush queued events immediately. Used by error capture so a crash-class
+   *  event isn't lost to the periodic batch if the page is about to unload. */
+  flushNow() {
+    this.queue.flush()
+  }
+
   destroy() {
     this.autoCapture?.stop()
+    this.errorCapture?.stop()
     this.queue.destroy()
   }
 }

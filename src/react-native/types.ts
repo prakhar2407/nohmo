@@ -10,6 +10,13 @@ export interface NohmoRNConfig {
   flushInterval?: number
   debug?: boolean
   autoAppLifecycle?: boolean
+  /**
+   * Automatically capture JS errors and crashes. Non-fatal errors are sent as
+   * JS_ERROR; a fatal crash is persisted and reported as APP_CRASH on the next
+   * app launch. Defaults to true. Catches JS-thread errors only (not native
+   * crashes). Set false to disable.
+   */
+  autoErrors?: boolean
   storage?: NohmoStorage
 }
 

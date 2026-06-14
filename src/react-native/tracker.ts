@@ -21,10 +21,11 @@ const _p = {
 }
 
 const KEYS = {
-  deviceId:    '@nohmo_did',
-  userId:      '@nohmo_uid',
-  firstOpen:   '@nohmo_first',
-  installAttr: '@nohmo_install_attr',
+  deviceId:     '@nohmo_did',
+  userId:       '@nohmo_uid',
+  firstOpen:    '@nohmo_first',
+  installAttr:  '@nohmo_install_attr',
+  pendingCrash: '@nohmo_pending_crash',
 }
 
 function genId(prefix: string) {
@@ -65,12 +66,14 @@ export class NohmoRNTracker {
   private installAttr: Record<string, string> = {}
   private installAttrAttempted = false
   private inviteCache: Record<string, string> = {}
+  private prevErrorHandler: ((error: Error, isFatal?: boolean) => void) | null = null
 
   constructor(config: NohmoRNConfig) {
     this.config = {
       flushInterval: 5000,
       debug: false,
       autoAppLifecycle: true,
+      autoErrors: true,
       appVersion: '',
       storage: makeMemoryStorage(),
       ...config,
@@ -83,12 +86,13 @@ export class NohmoRNTracker {
   async init(): Promise<void> {
     try {
       // Read persisted IDs
-      const [storedDeviceId, storedUserId, firstOpenDone, initialUrl, storedInstallAttr] = await Promise.all([
+      const [storedDeviceId, storedUserId, firstOpenDone, initialUrl, storedInstallAttr, storedCrash] = await Promise.all([
         this.storage.getItem(KEYS.deviceId),
         this.storage.getItem(KEYS.userId),
         this.storage.getItem(KEYS.firstOpen),
         Linking.getInitialURL(),
         this.storage.getItem(KEYS.installAttr),
+        this.storage.getItem(KEYS.pendingCrash),
       ])
 
       this.deepLinkUtm = parseDeepLinkUtm(initialUrl)
@@ -151,6 +155,35 @@ export class NohmoRNTracker {
       }
       this.pendingEvents = []
 
+      // Report a fatal crash recorded on the previous run, attributed back to the
+      // session/time it actually happened in (so it lands in the right journey).
+      // A fatal JS crash in a release build also aborts the native process, so we
+      // remember its (session, ts) to suppress the duplicate native record below.
+      let jsCrashHint: { ts?: number; sessionId?: string } | null = null
+      if (storedCrash) {
+        try {
+          const c = JSON.parse(storedCrash) as {
+            message?: string; stack?: string; screen?: string; sessionId?: string; ts?: number
+          }
+          jsCrashHint = { ts: c.ts, sessionId: c.sessionId }
+          this._enqueueRaw('APP_CRASH', {
+            kind: 'fatal',
+            message: c.message ?? 'Unknown crash',
+            stack: c.stack ?? '',
+            isFatal: true,
+            screen: c.screen ?? '',
+            crashedAt: c.ts ?? null,
+          }, { sessionId: c.sessionId, ts: c.ts, screen: c.screen })
+        } catch { /* corrupt payload — ignore */ }
+        await this.storage.setItem(KEYS.pendingCrash, '') // clear (shim has no removeItem)
+      }
+
+      // Native (Android/iOS) crashes captured by the NohmoCrash module on a
+      // previous run — drain and report, attributed to the run they happened in.
+      if (this.config.autoErrors) {
+        await this._drainNativeCrashes(jsCrashHint)
+      }
+
       // Track install (only on very first open)
       if (!firstOpenDone) {
         await this.storage.setItem(KEYS.firstOpen, '1')
@@ -176,6 +209,20 @@ export class NohmoRNTracker {
       // App lifecycle
       if (this.config.autoAppLifecycle) {
         this.appStateSubscription = AppState.addEventListener('change', this._onAppStateChange)
+      }
+
+      // JS error / crash capture via the RN global error handler
+      if (this.config.autoErrors && typeof ErrorUtils !== 'undefined') {
+        this.prevErrorHandler = ErrorUtils.getGlobalHandler()
+        ErrorUtils.setGlobalHandler(this._onGlobalError)
+      }
+
+      // Native crash capture (Android Java/Kotlin, iOS Obj-C + signals):
+      // install the native handlers and seed the current session/screen so a
+      // native crash can be tied back to the journey that led to it.
+      if (this.config.autoErrors) {
+        try { this._nativeCrash?.installCrashHandler?.() } catch { /* native module absent */ }
+        this._syncCrashContext()
       }
 
       // Flush timer
@@ -224,6 +271,7 @@ export class NohmoRNTracker {
     }
     this.currentScreen = screenName
     this.sessionStart = Date.now()
+    this._syncCrashContext()
     this.send('SCREEN_VIEW', { screen: screenName })
   }
 
@@ -393,6 +441,104 @@ export class NohmoRNTracker {
     }
   }
 
+  // RN global error handler. Fires for both caught-by-RN and fatal JS errors.
+  // Fatal → persist for next-launch reporting (a fetch won't finish as the app
+  // dies). Non-fatal → send immediately. Always defer to the previous handler
+  // so the app still red-boxes / crashes normally.
+  private _onGlobalError = (error: Error, isFatal?: boolean) => {
+    try {
+      const message = error?.message ? String(error.message).slice(0, 1000) : 'Unknown error'
+      const stack = error?.stack ? String(error.stack).slice(0, 4000) : ''
+      if (isFatal) {
+        this.storage.setItem(KEYS.pendingCrash, JSON.stringify({
+          message, stack, screen: this.currentScreen, sessionId: this.sessionId, ts: Date.now(),
+        })).catch(() => { /* best effort */ })
+      } else {
+        this.send('JS_ERROR', { kind: 'error', message, stack, isFatal: false, screen: this.currentScreen })
+      }
+    } catch { /* our handler must never throw */ }
+    this.prevErrorHandler?.(error, isFatal)
+  }
+
+  // Enqueue an event with explicit session/ts/screen overrides — used to replay a
+  // persisted crash so it's attributed to the run it happened in, not this launch.
+  private _enqueueRaw(
+    event: string,
+    data: Record<string, unknown>,
+    opts: { sessionId?: string; ts?: number; screen?: string },
+  ) {
+    const partial: PartialEvent = {
+      userId: this.userId,
+      sessionId: opts.sessionId || this.sessionId,
+      event,
+      data,
+      screen: opts.screen ?? this.currentScreen,
+      referrer: '',
+      ts: opts.ts || Date.now(),
+      platform: Platform.OS as 'ios' | 'android',
+      appVersion: this.config.appVersion,
+      ...(Object.keys(this.deepLinkUtm).length > 0 ? { utm: this.deepLinkUtm } : {}),
+      ...(Object.keys(this.installAttr).length > 0 ? { install_utm: this.installAttr } : {}),
+    }
+    if (!this.deviceId) { this.pendingEvents.push(partial); return }
+    this.queue.push({ ...partial, deviceId: this.deviceId })
+  }
+
+  // The optional NohmoCrash native module (absent on web / Expo Go / older hosts).
+  private get _nativeCrash() {
+    return (NativeModules as Record<string, unknown>).NohmoCrash as {
+      installCrashHandler?: () => void
+      setSessionContext?: (sessionId: string, screen: string) => void
+      getStoredCrashes?: () => Promise<Array<Record<string, unknown>>>
+    } | undefined
+  }
+
+  // Push the current JS session/screen to native so a native crash record can be
+  // attributed to the session it happened in. Fire-and-forget, never throws.
+  private _syncCrashContext() {
+    try { this._nativeCrash?.setSessionContext?.(this.sessionId, this.currentScreen) } catch { /* ignore */ }
+  }
+
+  // Read native crashes recorded on a previous run and emit them as APP_CRASH,
+  // attributed to the original session/time. The native call consumes (deletes)
+  // the records. `jsCrashHint` is the (session, ts) of a JS fatal crash already
+  // reported this launch — a native record within ~4s of it is the same crash's
+  // process-abort, so we skip it (the JS record has the richer stack).
+  private async _drainNativeCrashes(jsCrashHint?: { ts?: number; sessionId?: string } | null) {
+    let list: Array<Record<string, unknown>> | undefined
+    try {
+      list = await this._nativeCrash?.getStoredCrashes?.()
+    } catch {
+      return
+    }
+    if (!Array.isArray(list)) return
+    for (const r of list) {
+      const ts = typeof r.ts === 'number' && r.ts > 0 ? r.ts : Date.now()
+      const screen = typeof r.screen === 'string' ? r.screen : ''
+
+      // Skip the native duplicate of an already-reported fatal JS crash.
+      if (jsCrashHint?.ts && Math.abs(ts - jsCrashHint.ts) < 4000) {
+        const sameSession = !jsCrashHint.sessionId || !r.sessionId || r.sessionId === jsCrashHint.sessionId
+        if (sameSession) continue
+      }
+      this._enqueueRaw('APP_CRASH', {
+        kind: 'native',
+        platform: r.platform ?? Platform.OS,
+        nativeType: r.type ?? '',
+        signal: r.signal ?? '',
+        message: r.message ?? 'Native crash',
+        stack: r.stack ?? '',
+        thread: r.thread ?? '',
+        screen,
+        crashedAt: ts,
+      }, {
+        sessionId: typeof r.sessionId === 'string' && r.sessionId ? r.sessionId : undefined,
+        ts,
+        screen,
+      })
+    }
+  }
+
   private _onAppStateChange = (nextState: string) => {
     if (nextState === 'background' || nextState === 'inactive') {
       const secs = Math.round((Date.now() - this.sessionStart) / 1000)
@@ -407,6 +553,7 @@ export class NohmoRNTracker {
     } else if (nextState === 'active') {
       this.sessionId = genId('sess')
       this.sessionStart = Date.now()
+      this._syncCrashContext()
       this.send('APP_OPEN', { platform: Platform.OS, appVersion: this.config.appVersion })
     }
   }
@@ -452,6 +599,9 @@ export class NohmoRNTracker {
   destroy() {
     if (this.flushTimer) clearInterval(this.flushTimer)
     this.appStateSubscription?.remove()
+    if (this.prevErrorHandler && typeof ErrorUtils !== 'undefined') {
+      ErrorUtils.setGlobalHandler(this.prevErrorHandler)
+    }
     this._flush()
   }
 }

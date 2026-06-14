@@ -11,6 +11,12 @@ export interface NohmoConfig {
   autoTimeSpent?: boolean
   autoCapture?: boolean
   /**
+   * Automatically capture uncaught JS errors, unhandled promise rejections,
+   * failed network requests (fetch/XHR 4xx/5xx), and resource 404s as
+   * JS_ERROR / HTTP_ERROR events. Defaults to true. Set false to disable.
+   */
+  autoErrors?: boolean
+  /**
    * Custom URL parameter names to treat as attribution when no utm_* params
    * are present. Checked in order; the first match becomes source and the
    * param name itself becomes medium so it's identifiable in the dashboard.

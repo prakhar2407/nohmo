@@ -46,3 +46,10 @@ declare module '@react-native-async-storage/async-storage' {
   }
   export default AsyncStorage
 }
+
+// React Native installs a global error handler hook (ErrorUtils) at runtime.
+// It is not exported from 'react-native', so declare it as an ambient global.
+declare const ErrorUtils: {
+  getGlobalHandler(): (error: Error, isFatal?: boolean) => void
+  setGlobalHandler(handler: (error: Error, isFatal?: boolean) => void): void
+}

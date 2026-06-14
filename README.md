@@ -214,6 +214,8 @@ If you skip `storage`, everything works — events are tracked, screens are reco
 | `APP_OPEN` | Every time the app becomes active |
 | `APP_BACKGROUND` | When the app goes to background, with session duration |
 | `TIME_SPENT` | When leaving a screen or backgrounding the app, with seconds on the screen |
+| `JS_ERROR` | A non-fatal JS error caught by the global handler, with message + stack |
+| `APP_CRASH` | A fatal JS crash — persisted and reported on the next app launch, attributed to the session it happened in |
 | `INSTALL_ATTRIBUTED` | Attribution resolved on first open — Play Store referrer on Android, system pasteboard on iOS (built-in, no extra packages) |
 
 ### Track screens automatically
@@ -321,6 +323,7 @@ function PushTokenRegistrar() {
 | `flushInterval` | `number` | `5000` | Milliseconds between batch event flushes |
 | `debug` | `boolean` | `false` | Log all SDK activity to the console |
 | `autoAppLifecycle` | `boolean` | `true` | Auto-track `APP_OPEN` and `APP_BACKGROUND` on foreground/background transitions |
+| `autoErrors` | `boolean` | `true` | Capture JS errors (`JS_ERROR`) and crashes (`APP_CRASH`) — including native Android/iOS crashes |
 | `storage` | `NohmoStorage` | in-memory | Provide an AsyncStorage-compatible object to persist device identity across app restarts. Pass `AsyncStorage` from `@react-native-async-storage/async-storage`. Without this, a new device ID is generated on every cold start. |
 
 ### Autocapture (press events)
@@ -495,11 +498,38 @@ Attribution is automatic — if the user arrived via `?utm_source=google&utm_med
 | `RAGE_CLICK` | Three or more rapid clicks in the same spot | `tag`, `text` |
 | `FORM_SUBMIT` | Submission of any `<form>` | `tag`, `text` |
 | `INPUT_CHANGE` | Change on any `<input>`, `<select>`, or `<textarea>` | `tag`, `text` |
+| `JS_ERROR` | Uncaught exception or unhandled promise rejection | `message`, `stack`, `filename`, `lineno` |
+| `HTTP_ERROR` | A `fetch`/`XHR` request returning 4xx/5xx, or a resource (img/script/css) that fails to load | `status`, `method`, `url`, `kind` |
 | `USER_LINKED` | When `linkUser()` is called | `email` |
 
 Disable any category via the `options` prop.
 
 **Privacy:** `FORM_SUBMIT` and `INPUT_CHANGE` never capture field *values* — only that the interaction happened. Inputs marked `data-sensitive`, password fields, and credit-card fields (`autocomplete="cc-*"`) are skipped entirely, as is any element carrying the `data-nohmo-ignore` attribute.
+
+## Error & crash tracking
+
+Error tracking is **on by default**. The SDK captures:
+
+- **Web** — uncaught JS exceptions and unhandled promise rejections (`JS_ERROR`), plus failed `fetch`/`XHR` requests (4xx/5xx) and resource 404s (`HTTP_ERROR`).
+- **React Native** — non-fatal JS errors (`JS_ERROR`) and fatal crashes (`APP_CRASH`), including **native crashes**: Android Java/Kotlin uncaught exceptions, and iOS Objective-C exceptions **and Swift/signal crashes** (force-unwraps, `fatalError`, segfaults). Crashes are persisted natively and reported on the next app launch, attributed back to the session — and journey — they happened in.
+
+Every error is just an event, so it carries the same session and device context as everything else — meaning the dashboard's **Errors** page can show you not just *what* broke but the **journey leading up to the crash**: the exact sequence of pages/screens, clicks, and taps right before it. Group errors are deduplicated by signature, with affected users, devices, and a sample stack trace.
+
+**Real-time alerts:** add an *Event Match* webhook (Settings → Webhooks) on `JS_ERROR` or `APP_CRASH` to get notified the moment errors happen.
+
+**Scope:** native capture covers uncaught JVM exceptions (Android) and Obj-C exceptions + signal crashes (iOS) — not Android NDK/C++ crashes or ANRs. Stack traces are **raw / unsymbolicated** for now (dSYM & ProGuard symbolication are planned).
+
+**Turn it off:**
+```tsx
+// React / Next.js / React Native
+<NohmoProvider options={{ autoErrors: false }} … />
+```
+```html
+<!-- Script tag -->
+<script src="…/n.min.js" data-project="…" data-api-key="…" data-errors="false" defer></script>
+```
+
+**Privacy:** error messages are truncated, query strings are stripped from captured URLs, and the SDK never reports failures of its own tracking endpoint.
 
 ## UTM attribution
 
@@ -542,6 +572,7 @@ The SDK fetches your configured list from the backend when it initialises, so th
 | `autoScrollDepth` | `boolean` | `true` | Track scroll depth at 25 / 50 / 75 / 100% |
 | `autoTimeSpent` | `boolean` | `true` | Send `TIME_SPENT` when leaving a page |
 | `autoCapture` | `boolean` | `true` | Capture clicks, rage-clicks, form submits, and input changes automatically (field values are never captured) |
+| `autoErrors` | `boolean` | `true` | Capture uncaught JS errors, unhandled rejections, failed network requests, and resource 404s as `JS_ERROR` / `HTTP_ERROR` |
 
 ```tsx
 <NohmoNextProvider
