@@ -182,6 +182,7 @@ export class ErrorCapture {
   }
 
   private reportHttp(kind: 'fetch' | 'xhr', url: string, method: string, status: number, statusText: string) {
+    if (!this.isTrackableUrl(url)) return // ignore extension / custom-scheme noise (e.g. properties://, chrome-extension://)
     const clean = this.stripQuery(url)
     if (this.isIgnored(clean)) return // never report our own tracking endpoint → no loop
     if (!this.allow(`http:${status}:${method}:${clean}`)) return
@@ -220,6 +221,20 @@ export class ErrorCapture {
 
   private isIgnored(url: string): boolean {
     return url.includes('/api/tracker/')
+  }
+
+  // Only real http(s) requests belong to the app. Custom schemes like
+  // properties://, chrome-extension://, moz-extension://, data:, blob: come from
+  // browser extensions or the platform — not the user's code — so they're never
+  // reported as HTTP errors. Relative URLs resolve against the page (http/https).
+  private isTrackableUrl(url: string): boolean {
+    try {
+      const base = typeof window !== 'undefined' ? window.location.href : undefined
+      const protocol = new URL(url, base).protocol
+      return protocol === 'http:' || protocol === 'https:'
+    } catch {
+      return false
+    }
   }
 
   private urlOf(input: RequestInfo | URL): string {
