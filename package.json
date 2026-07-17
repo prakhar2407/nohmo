@@ -31,7 +31,7 @@
     "android",
     "ios",
     "Nohmo.podspec",
-    "react-native.config.js",
+    "react-native.config.cjs",
     "README.md",
     "babel-plugin.cjs"
   ],

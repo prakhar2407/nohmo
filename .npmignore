@@ -1,6 +1,6 @@
 src/
 *.config.js
-!react-native.config.js
+!react-native.config.cjs
 *.podspec
 !Nohmo.podspec
 tsconfig*.json
