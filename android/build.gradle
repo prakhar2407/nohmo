@@ -1,22 +1,36 @@
 buildscript {
+    // Read a property from the host app's root project, falling back to a default
+    // when the app doesn't define it (mirrors the pattern used by other RN libraries).
+    ext.safeExtGet = { prop, fallback ->
+        rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+    }
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.1.0'
+        // The native modules are written in Kotlin. Without the Kotlin plugin the .kt
+        // sources are silently skipped, the AAR ships with no classes, and autolinking
+        // fails at compile time with "cannot find symbol: NohmoPackage".
+        // Track the host app's Kotlin version so the library never forces a second,
+        // conflicting version of the Kotlin plugin into the build.
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${safeExtGet('kotlinVersion', '1.9.24')}"
     }
 }
 
 apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
 
 android {
-    compileSdkVersion 34
+    // Inherit the host app's SDK levels where set — a library pinned to an older
+    // compileSdk than the app it's built into can fail to resolve platform APIs.
+    compileSdkVersion safeExtGet('compileSdkVersion', 34)
     namespace "com.nohmo"
 
     defaultConfig {
-        minSdkVersion 21
-        targetSdkVersion 34
+        minSdkVersion safeExtGet('minSdkVersion', 21)
+        targetSdkVersion safeExtGet('targetSdkVersion', 34)
     }
 }
 
