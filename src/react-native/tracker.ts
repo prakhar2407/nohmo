@@ -25,6 +25,7 @@ const KEYS = {
   userId:       '@nohmo_uid',
   firstOpen:    '@nohmo_first',
   installAttr:  '@nohmo_install_attr',
+  deepLink:     '@nohmo_deeplink',
   pendingCrash: '@nohmo_pending_crash',
 }
 
@@ -43,6 +44,24 @@ function parseDeepLinkUtm(url: string | null): Record<string, string> {
     return utm
   } catch {
     return {}
+  }
+}
+
+// Pull the deep-link destination out of an incoming link URL — either an explicit
+// ?dlv=<value> param (what Nohmo Smart Links carry) or the path of a custom-scheme
+// URL (e.g. yourapp://product/123 → "product/123"). Used for DIRECT deep linking
+// when the app is already installed and opened via a link.
+function parseDeepLinkValue(url: string | null): string {
+  if (!url) return ''
+  try {
+    const qs = url.includes('?') ? url.split('?')[1] : ''
+    const dlv = new URLSearchParams(qs).get('dlv')
+    if (dlv) return dlv
+    const schemeMatch = url.match(/^[a-z][a-z0-9+.-]*:\/\/(.*)$/i)
+    if (schemeMatch) return schemeMatch[1].split('?')[0].replace(/\/+$/, '')
+    return ''
+  } catch {
+    return ''
   }
 }
 
@@ -66,6 +85,11 @@ export class NohmoRNTracker {
   private installAttr: Record<string, string> = {}
   private installAttrAttempted = false
   private inviteCache: Record<string, string> = {}
+  // Resolved deep-link destination (OneLink-style) — from a direct link when the app
+  // is already installed, or restored from the install match (deferred deep linking).
+  private deepLink: string | null = null
+  private deepLinkListeners: ((value: string) => void)[] = []
+  private linkingSub: { remove: () => void } | null = null
   private prevErrorHandler: ((error: Error, isFatal?: boolean) => void) | null = null
 
   constructor(config: NohmoRNConfig) {
@@ -96,6 +120,19 @@ export class NohmoRNTracker {
       ])
 
       this.deepLinkUtm = parseDeepLinkUtm(initialUrl)
+      // DIRECT deep link: the app was opened via a link that carries a destination
+      // (universal/app link or custom scheme) — resolve it immediately.
+      const directValue = parseDeepLinkValue(initialUrl)
+      if (directValue) this._resolveDeepLink(directValue, 'direct')
+      // Restore a destination resolved on a previous run (e.g. a deferred deep link
+      // that hadn't been consumed by a listener yet).
+      const storedDeepLink = await this.storage.getItem(KEYS.deepLink)
+      if (storedDeepLink && !this.deepLink) this.deepLink = storedDeepLink
+      // Keep resolving destinations from links opened while the app is running.
+      this.linkingSub = Linking.addEventListener('url', ({ url }) => {
+        const v = parseDeepLinkValue(url)
+        if (v) this._resolveDeepLink(v, 'direct')
+      })
       if (storedInstallAttr) {
         try { this.installAttr = JSON.parse(storedInstallAttr) } catch { /* ignore */ }
       }
@@ -379,9 +416,10 @@ export class NohmoRNTracker {
     }
 
     // Always forward the raw string — backend extracts nohmo_click for deterministic matching
-    // even when the referrer contains no utm_* params
+    // even when the referrer contains no utm_* params. The response carries the
+    // deferred deep-link destination (if the matched click had one).
     try {
-      await fetch(`${_h}${_p.a}`, {
+      const res = await fetch(`${_h}${_p.a}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': this.config.apiKey },
         body: JSON.stringify({
@@ -390,7 +428,52 @@ export class NohmoRNTracker {
           platform: Platform.OS,
         }),
       })
+      const dlv = (await res.json())?.data?.deepLinkValue
+      if (dlv && !this.deepLink) this._resolveDeepLink(dlv, 'deferred')
     } catch { /* non-critical */ }
+  }
+
+  // Record a resolved destination, persist it, emit a DEEP_LINK event, and notify
+  // any onDeepLink listeners. `source` is 'direct' (app already installed) or
+  // 'deferred' (restored after install).
+  private _resolveDeepLink(value: string, source: 'direct' | 'deferred') {
+    if (!value || this.deepLink === value) return
+    this.deepLink = value
+    this.storage.setItem(KEYS.deepLink, value).catch(() => {})
+    this.send('DEEP_LINK', { value, source })
+    for (const cb of this.deepLinkListeners) {
+      try { cb(value) } catch { /* listener threw */ }
+    }
+    this._log('Deep link resolved:', { value, source })
+  }
+
+  /** The resolved deep-link destination (e.g. "product/123"), or null if none. */
+  getDeepLink(): string | null {
+    return this.deepLink
+  }
+
+  /**
+   * Route users to the screen a Smart Link points at — for both an installed app
+   * opened via a link (direct) and a new user restored after install (deferred).
+   * Fires immediately if a destination is already resolved, then on every future
+   * one. Returns an unsubscribe function.
+   *
+   * @example
+   *   nohmo.onDeepLink(dest => navigation.navigate(...routeFor(dest)))
+   */
+  onDeepLink(cb: (value: string) => void): () => void {
+    this.deepLinkListeners.push(cb)
+    if (this.deepLink) { try { cb(this.deepLink) } catch { /* listener threw */ } }
+    return () => {
+      const i = this.deepLinkListeners.indexOf(cb)
+      if (i >= 0) this.deepLinkListeners.splice(i, 1)
+    }
+  }
+
+  /** Manually resolve a destination from an incoming link URL (if you handle Linking yourself). */
+  handleUrl(url: string): void {
+    const v = parseDeepLinkValue(url)
+    if (v) this._resolveDeepLink(v, 'direct')
   }
 
   private async _autoReadInstallReferrer(): Promise<void> {
@@ -414,7 +497,7 @@ export class NohmoRNTracker {
     if (this.installAttrAttempted) return
     this.installAttrAttempted = true
     try {
-      await fetch(`${_h}${_p.a}`, {
+      const res = await fetch(`${_h}${_p.a}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': this.config.apiKey },
         body: JSON.stringify({
@@ -423,6 +506,9 @@ export class NohmoRNTracker {
           platform: Platform.OS,
         }),
       })
+      // A probabilistic match can still carry a deferred deep-link destination.
+      const dlv = (await res.json())?.data?.deepLinkValue
+      if (dlv && !this.deepLink) this._resolveDeepLink(dlv, 'deferred')
     } catch { /* non-critical */ }
   }
 
@@ -599,6 +685,8 @@ export class NohmoRNTracker {
   destroy() {
     if (this.flushTimer) clearInterval(this.flushTimer)
     this.appStateSubscription?.remove()
+    this.linkingSub?.remove()
+    this.deepLinkListeners = []
     if (this.prevErrorHandler && typeof ErrorUtils !== 'undefined') {
       ErrorUtils.setGlobalHandler(this.prevErrorHandler)
     }

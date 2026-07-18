@@ -43,4 +43,8 @@ export interface NohmoRNContextValue {
   linkUser: (userId: string, email?: string, meta?: Record<string, unknown>) => Promise<void>
   registerPushToken: (token: string) => Promise<void>
   setInstallReferrer: (referrerString: string) => Promise<void>
+  /** The resolved Smart Link destination (e.g. "product/123"), or null if none. */
+  getDeepLink: () => string | null
+  /** Subscribe to Smart Link destinations (direct + deferred). Returns an unsubscribe. */
+  onDeepLink: (cb: (value: string) => void) => () => void
 }

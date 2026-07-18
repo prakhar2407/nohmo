@@ -408,6 +408,68 @@ yourapp://open?utm_source=meta&utm_medium=cpc&utm_campaign=summer
 
 Attribution appears in **Traffic → Conversions** and is linked to every event in that session.
 
+### Smart Links — deep linking & deferred deep linking (OneLink-style)
+
+A Nohmo **Smart Link** (`https://www.nohmo.in/s/<projectId>?dlv=<destination>&utm_source=…`)
+routes every user to the right place from one URL:
+
+- **Installed app** → opens the app directly to `<destination>` (a *Universal Link* on iOS,
+  *App Link* on Android).
+- **New user** → routes to the correct App Store, then — after install — the SDK restores
+  `<destination>` so they land on the same screen (**deferred deep linking**).
+
+Read the destination in your app with **`onDeepLink`** — it fires for both cases:
+
+```tsx
+import { useNohmo } from 'nohmo/react-native'
+
+function useSmartLinkRouting(navigation) {
+  const { onDeepLink } = useNohmo()
+  useEffect(() => onDeepLink((dest) => {
+    // dest is whatever you put in the link's "Destination" field, e.g. "product/123"
+    const [screen, id] = dest.split('/')
+    navigation.navigate(screen, { id })
+  }), [])
+}
+```
+
+`getDeepLink()` returns the current destination synchronously if you'd rather poll.
+
+Create Smart Links (and set the **Destination**) in the dashboard under
+**Settings → Mobile → Smart Links**. Deferred deep linking works out of the box.
+To make an **installed** app open directly, do the one-time setup below.
+
+#### One-time setup for direct open (Universal / App Links)
+
+**1. Dashboard** — fill in your app identity under **Settings → Mobile → Deep linking**:
+your iOS App ID (`TEAMID.bundle.id`), Android package, and SHA-256 signing fingerprint(s).
+Nohmo then publishes the association files automatically:
+
+- `https://www.nohmo.in/.well-known/apple-app-site-association`
+- `https://www.nohmo.in/.well-known/assetlinks.json`
+
+**2. iOS** — add the Associated Domain in Xcode (Signing & Capabilities → Associated Domains):
+
+```
+applinks:www.nohmo.in
+```
+
+**3. Android** — add an App Links intent filter to your launch activity in `AndroidManifest.xml`:
+
+```xml
+<intent-filter android:autoVerify="true">
+  <action android:name="android.intent.action.VIEW" />
+  <category android:name="android.intent.category.DEFAULT" />
+  <category android:name="android.intent.category.BROWSABLE" />
+  <data android:scheme="https" android:host="www.nohmo.in"
+        android:pathPrefix="/s/YOUR_PROJECT_ID" />
+</intent-filter>
+```
+
+**4.** Wire `onDeepLink` (above) to your navigation. That's it — the same steps AppsFlyer
+OneLink requires. Until this setup is done, Smart Links still work as tracking links with
+deferred deep linking; they just open the store instead of the installed app.
+
 ### Invite a friend (referral attribution)
 
 Want installs from in-app sharing — "invite a friend" — attributed back to the user who shared? Share a Nohmo link instead of the raw store URL. `buildInviteLink()` returns a **short** link that carries the current user's id, so you can see exactly who referred whom.

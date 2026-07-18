@@ -11,6 +11,8 @@ const NohmoRNContext = createContext<NohmoRNContextValue>({
   linkUser: async () => undefined,
   registerPushToken: async () => undefined,
   setInstallReferrer: async () => undefined,
+  getDeepLink: () => null,
+  onDeepLink: () => () => undefined,
 })
 
 interface NohmoProviderProps {
@@ -29,6 +31,9 @@ export function NohmoProvider({
   const trackerRef = useRef<NohmoRNTracker | null>(null)
   type PendingLink = [string, string | undefined, Record<string, unknown> | undefined]
   const pendingLinksRef = useRef<PendingLink[]>([])
+  // Deep-link listeners registered by children before the tracker exists (child
+  // effects run before the provider's), replayed once the tracker is created.
+  const pendingDeepLinkRef = useRef<((value: string) => void)[]>([])
 
   useEffect(() => {
     const tracker = new NohmoRNTracker({ projectId, apiKey, ...options })
@@ -40,6 +45,7 @@ export function NohmoProvider({
         tracker.linkUser(userId, email, meta)
       }
     }
+    for (const cb of pendingDeepLinkRef.current.splice(0)) tracker.onDeepLink(cb)
 
     tracker.init()
     setAutoCaptureTracker(tracker)
@@ -80,8 +86,20 @@ export function NohmoProvider({
     await trackerRef.current?.setInstallReferrer(referrerString)
   }
 
+  const getDeepLink = () => trackerRef.current?.getDeepLink() ?? null
+
+  const onDeepLink = (cb: (value: string) => void) => {
+    if (trackerRef.current) return trackerRef.current.onDeepLink(cb)
+    // Tracker not ready yet — buffer, and allow unsubscribing before it's created.
+    pendingDeepLinkRef.current.push(cb)
+    return () => {
+      const i = pendingDeepLinkRef.current.indexOf(cb)
+      if (i >= 0) pendingDeepLinkRef.current.splice(i, 1)
+    }
+  }
+
   return (
-    <NohmoRNContext.Provider value={{ send, trackScreenView, trackConversion, buildInviteLink, linkUser, registerPushToken, setInstallReferrer }}>
+    <NohmoRNContext.Provider value={{ send, trackScreenView, trackConversion, buildInviteLink, linkUser, registerPushToken, setInstallReferrer, getDeepLink, onDeepLink }}>
       {children}
     </NohmoRNContext.Provider>
   )
