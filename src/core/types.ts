@@ -17,6 +17,13 @@ export interface NohmoConfig {
    */
   autoErrors?: boolean
   /**
+   * The build currently running, e.g. "2.4.1" or a commit SHA. Reported on init so
+   * Nohmo can build a deploy timeline and line metric movements up against releases
+   * ("conversions fell 18% — that lines up with 2.4.1 shipping"). Optional: without it
+   * the timeline only contains releases reported by CI or added by hand.
+   */
+  release?: string
+  /**
    * Custom URL parameter names to treat as attribution when no utm_* params
    * are present. Checked in order; the first match becomes source and the
    * param name itself becomes medium so it's identifiable in the dashboard.

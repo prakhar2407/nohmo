@@ -87,6 +87,36 @@ function _coerceLabel(v: unknown): string | null {
 // Marks a function as already wrapped, so nested wraps can de-duplicate.
 const _WRAPPED = '__nohmoWrapped__'
 
+// ── Rage presses ───────────────────────────────────────────────────────────
+// The web SDK emits RAGE_CLICK when someone jabs the same spot three times in a
+// second. Mobile users do exactly the same thing to an unresponsive button, and
+// without this the whole signal was web-only. Keyed by the press target rather than
+// by coordinates — RN gives us the component identity, which is more precise than a
+// screen position and survives scrolling.
+const RAGE_WINDOW_MS = 1000
+const RAGE_THRESHOLD = 3
+const _rageCounts = new Map<string, { count: number; ts: number }>()
+
+function _trackRage(sender: Sender, key: string, payload: Record<string, unknown>): void {
+  const now = Date.now()
+  const prev = _rageCounts.get(key)
+  if (prev && now - prev.ts < RAGE_WINDOW_MS) {
+    prev.count++
+    prev.ts = now
+    // Fire once on crossing the threshold, not on every press after it.
+    if (prev.count === RAGE_THRESHOLD) sender.send('RAGE_CLICK', payload)
+    return
+  }
+  _rageCounts.set(key, { count: 1, ts: now })
+  // A long session touching many controls would otherwise grow this map without
+  // bound; the entries are only meaningful for a second anyway.
+  if (_rageCounts.size > 100) {
+    for (const [k, v] of _rageCounts) {
+      if (now - v.ts > RAGE_WINDOW_MS) _rageCounts.delete(k)
+    }
+  }
+}
+
 /**
  * Injected by the Nohmo Babel plugin around every onPress / onLongPress.
  * Fires a PRESS or LONG_PRESS event then calls the original handler.
@@ -112,12 +142,19 @@ export function __nohmoWrap<T extends ((...args: unknown[]) => unknown) | null |
     const handlerIsWrapped =
       typeof handler === 'function' && (handler as unknown as Record<string, unknown>)[_WRAPPED] === true
     if (s && !handlerIsWrapped) {
-      s.send(meta.p === 'onLongPress' ? 'LONG_PRESS' : 'PRESS', {
+      const isLong = meta.p === 'onLongPress'
+      const payload = {
         component: meta.c ?? null,
         text: _coerceLabel(meta.t),
         file: meta.f ?? null,
         line: meta.l ?? null,
-      })
+      }
+      s.send(isLong ? 'LONG_PRESS' : 'PRESS', payload)
+      // Repeated jabs at the same control are the mobile equivalent of a rage click.
+      // Long-presses are excluded: holding a control is intentional, not frustration.
+      if (!isLong) {
+        _trackRage(s, `${meta.f ?? ''}:${meta.l ?? ''}:${meta.c ?? ''}`, payload)
+      }
     }
     return (handler as ((...a: unknown[]) => unknown) | null | undefined)?.(...args)
   }

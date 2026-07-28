@@ -36,6 +36,7 @@ export class NohmoTracker {
       autoTimeSpent: true,
       autoCapture: true,
       autoErrors: true,
+      release: '',
       attributionParams: ['ref'],
       ...config,
     }
@@ -83,6 +84,10 @@ export class NohmoTracker {
               page: typeof window !== 'undefined' ? window.location.pathname : '',
               referrer: typeof document !== 'undefined' ? document.referrer : '',
               deviceInfo: getDeviceInfo(),
+              // First sighting of a build is what seeds the deploy timeline the
+              // narrative correlates metric movements against. Omitted when unset so
+              // the backend can tell "no release configured" from "release is empty".
+              ...(this.config.release ? { release: this.config.release } : {}),
             }),
           }
         )

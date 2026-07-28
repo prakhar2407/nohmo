@@ -1,7 +1,10 @@
 // Automatic error & crash capture for the web SDK.
 // Emits JS_ERROR (uncaught exceptions + unhandled promise rejections),
-// and HTTP_ERROR (failed fetch/XHR requests and resource 404s).
+// HTTP_ERROR (failed fetch/XHR requests and resource 404s), and EMPTY_RESPONSE
+// (a request that succeeded but came back with nothing in it).
 // Mirrors the start()/stop() + cleanupFns pattern of AutoCapture.
+
+import { markNetworkActivity } from './activity'
 
 interface ErrorSender {
   send(event: string, data?: Record<string, unknown>): void
@@ -19,12 +22,31 @@ const DEDUP_MS = 5000        // drop an identical signature seen within this win
 const RATE_WINDOW_MS = 60000 // rolling window for the per-minute cap
 const RATE_MAX = 25          // max errors reported per window (survives error storms)
 
+// ── Empty successful responses ─────────────────────────────────────────────
+// A 200 carrying `[]` when the user expected their orders is a total product failure
+// that no error monitor will ever report — nothing threw, and the status code says
+// everything is fine.
+//
+// Only bodies at or under this size are inspected. Anything larger is definitionally
+// not empty, and skipping them means we never buffer a big response just to look at it.
+const EMPTY_BODY_MAX_BYTES = 2048
+// Body values that mean "the request worked and returned nothing useful".
+const EMPTY_BODY_LITERALS = new Set(['', '[]', '{}', 'null', '""'])
+// Common envelope keys — `{"data": []}` is just as empty as `[]`.
+const ENVELOPE_KEYS = ['data', 'results', 'items', 'records', 'rows', 'list']
+// Empty responses are lower-stakes than crashes, so they get a smaller budget of their own.
+const EMPTY_RATE_MAX = 10
+
 export class ErrorCapture {
   private tracker: ErrorSender
   private cleanupFns: (() => void)[] = []
   private recent = new Map<string, number>()
   private windowStart = 0
   private windowCount = 0
+  // Separate dedup/rate state so empty responses can never crowd out crash reports.
+  private recentEmpty = new Map<string, number>()
+  private emptyWindowStart = 0
+  private emptyWindowCount = 0
   private xhrMeta = new WeakMap<XMLHttpRequest, { method: string; url: string }>()
 
   constructor(tracker: ErrorSender) {
@@ -133,11 +155,19 @@ export class ErrorCapture {
     window.fetch = function (...args: Parameters<typeof fetch>): Promise<Response> {
       const url = self.urlOf(args[0])
       const method = self.methodOf(args[0], args[1])
+      // Tell dead-click detection that this click did cause work, whatever the outcome.
+      // Our OWN batch flush must not count: it fires every few seconds regardless of what
+      // the user did, and would mask every dead click behind a coincidental heartbeat.
+      self.markAppActivity(url)
       // Always invoke the real fetch with the global as receiver to avoid
       // "Illegal invocation" — never change its behaviour.
       return originalFetch.apply(window, args).then(
         (res: Response) => {
-          if (res && res.status >= 400) self.reportHttp('fetch', url, method, res.status, res.statusText)
+          if (res && res.status >= 400) {
+            self.reportHttp('fetch', url, method, res.status, res.statusText)
+          } else if (res && res.ok) {
+            self.inspectForEmptyBody(res, url, method)
+          }
           return res
         },
         (err: unknown) => {
@@ -164,9 +194,41 @@ export class ErrorCapture {
 
     proto.send = function (this: XMLHttpRequest, ...args: unknown[]) {
       const meta = self.xhrMeta.get(this)
+      if (meta) self.markAppActivity(meta.url)
       if (meta) {
         this.addEventListener('load', () => {
-          if (this.status >= 400) self.reportHttp('xhr', meta.url, meta.method, this.status, this.statusText)
+          if (this.status >= 400) {
+            self.reportHttp('xhr', meta.url, meta.method, this.status, this.statusText)
+            return
+          }
+          if (this.status >= 200 && this.status < 300) {
+            // XHR already holds the decoded body, so unlike fetch there is nothing to
+            // clone and no extra buffering to pay for — but ONLY for text-ish response
+            // types. Reading .responseText throws for 'blob'/'arraybuffer'/'document',
+            // and treating an unreadable body as "" would report every binary download
+            // as an empty response. When we cannot see the body, we say nothing.
+            const type = this.responseType
+            if (type === '' || type === 'text') {
+              let body = ''
+              try {
+                body = this.responseText || ''
+              } catch {
+                return
+              }
+              self.reportEmptyIfEmpty('xhr', meta.url, meta.method, this.status, body)
+            } else if (type === 'json') {
+              // Already parsed for us; check the value directly rather than re-serialising.
+              let parsed: unknown
+              try {
+                parsed = this.response
+              } catch {
+                return
+              }
+              if (self.isEmptyValue(parsed)) {
+                self.reportEmpty('xhr', meta.url, meta.method, this.status, 0)
+              }
+            }
+          }
         })
         this.addEventListener('error', () => {
           self.reportHttp('xhr', meta.url, meta.method, 0, 'Network error')
@@ -201,6 +263,106 @@ export class ErrorCapture {
     this.tracker.flushNow?.()
   }
 
+  // ── Empty successful responses ───────────────────────────────────────────
+  /**
+   * Look at a 2xx fetch response only when it is cheap and safe to do so.
+   *
+   * A body is inspected only if the server declared a Content-Length at or under
+   * EMPTY_BODY_MAX_BYTES. That single condition guarantees we never buffer anything
+   * large and never touch a streamed or chunked response — a response big enough to
+   * lack a length header cannot be empty anyway, so nothing worth reporting is lost.
+   */
+  private inspectForEmptyBody(res: Response, url: string, method: string) {
+    if (!this.isTrackableUrl(url)) return
+    const clean = this.stripQuery(url)
+    if (this.isIgnored(clean)) return
+
+    const type = res.headers.get('content-type') || ''
+    if (!type.includes('json') && !type.includes('text/plain')) return
+
+    const lengthHeader = res.headers.get('content-length')
+    if (lengthHeader === null) return
+    const length = Number(lengthHeader)
+    if (!Number.isFinite(length) || length > EMPTY_BODY_MAX_BYTES) return
+
+    // clone() so the caller's own res.json()/res.text() is completely unaffected.
+    let copy: Response
+    try {
+      copy = res.clone()
+    } catch {
+      return
+    }
+    copy.text().then(
+      (body) => this.reportEmptyIfEmpty('fetch', url, method, res.status, body),
+      () => undefined,
+    )
+  }
+
+  /** True when an already-parsed JSON value carries no actual content. */
+  private isEmptyValue(parsed: unknown): boolean {
+    if (parsed === null || parsed === undefined) return true
+    if (Array.isArray(parsed)) return parsed.length === 0
+    if (typeof parsed === 'object') {
+      const obj = parsed as Record<string, unknown>
+      if (Object.keys(obj).length === 0) return true
+      // `{"data": []}` / `{"results": null}` are empty in every way that matters to a user.
+      for (const key of ENVELOPE_KEYS) {
+        if (key in obj) {
+          const inner = obj[key]
+          if (inner === null || (Array.isArray(inner) && inner.length === 0)) return true
+        }
+      }
+    }
+    return false
+  }
+
+  /** True when a successful body carries no actual content. */
+  private isEmptyBody(body: string): boolean {
+    const trimmed = (body || '').trim()
+    if (EMPTY_BODY_LITERALS.has(trimmed)) return true
+    if (trimmed.length > EMPTY_BODY_MAX_BYTES) return false
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch {
+      return false      // not JSON and not blank — it carries something
+    }
+    return this.isEmptyValue(parsed)
+  }
+
+  private reportEmptyIfEmpty(
+    kind: 'fetch' | 'xhr', url: string, method: string, status: number, body: string,
+  ) {
+    if (!this.isEmptyBody(body)) return
+    this.reportEmpty(kind, url, method, status, (body || '').length)
+  }
+
+  private reportEmpty(
+    kind: 'fetch' | 'xhr', url: string, method: string, status: number, bytes: number,
+  ) {
+    const clean = this.stripQuery(url)
+    if (this.isIgnored(clean)) return
+    // Empty responses get their OWN rate budget. Sharing allow() with JS_ERROR and
+    // HTTP_ERROR would let a chatty endpoint returning [] exhaust the per-minute cap and
+    // starve real crash reporting, which is the one thing that must always get through.
+    if (!this.allowEmpty(`empty:${method}:${clean}`)) return
+    this.tracker.send('EMPTY_RESPONSE', {
+      kind,
+      url: clean,
+      method,
+      status,
+      bytes,
+      page: this.page(),
+    })
+  }
+
+  /** Record a request as evidence the app reacted — unless it is one of ours. */
+  private markAppActivity(url: string) {
+    if (this.isIgnored(this.stripQuery(url))) return
+    markNetworkActivity()
+  }
+
   // ── helpers ──────────────────────────────────────────────────────────────
   private allow(signature: string): boolean {
     const now = Date.now()
@@ -216,6 +378,24 @@ export class ErrorCapture {
     }
     if (this.windowCount >= RATE_MAX) return false
     this.windowCount++
+    return true
+  }
+
+  /** Dedup + rate limit for EMPTY_RESPONSE, on a budget of its own. */
+  private allowEmpty(signature: string): boolean {
+    const now = Date.now()
+
+    const last = this.recentEmpty.get(signature)
+    if (last !== undefined && now - last < DEDUP_MS) return false
+    this.recentEmpty.set(signature, now)
+    if (this.recentEmpty.size > 200) this.recentEmpty.clear()
+
+    if (now - this.emptyWindowStart > RATE_WINDOW_MS) {
+      this.emptyWindowStart = now
+      this.emptyWindowCount = 0
+    }
+    if (this.emptyWindowCount >= EMPTY_RATE_MAX) return false
+    this.emptyWindowCount++
     return true
   }
 

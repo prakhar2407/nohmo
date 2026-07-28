@@ -360,8 +360,11 @@ That's it. The plugin rewrites this at build time:
 |-------|---------|
 | `PRESS` | Any `onPress` tap |
 | `LONG_PRESS` | Any `onLongPress` |
+| `RAGE_CLICK` | Three taps on the same control within a second — someone jabbing at an unresponsive button |
 
 Each event includes `component` (e.g. `Pressable`), `text` (button label if it's a static string), `file`, and `line`.
+
+A tap that leads to nothing — no navigation, no custom event, no request — is detected server-side as a **dead press** and shown under [Silent Failures](#silent-failures), with the handler's file and line so you know exactly where to look.
 
 **What it doesn't capture:** dynamic text from variables/state, `onPressIn`/`onPressOut` (intentionally excluded — too noisy), or press handlers inside `node_modules`.
 
@@ -562,9 +565,41 @@ Attribution is automatic — if the user arrived via `?utm_source=google&utm_med
 | `INPUT_CHANGE` | Change on any `<input>`, `<select>`, or `<textarea>` | `tag`, `text` |
 | `JS_ERROR` | Uncaught exception or unhandled promise rejection | `message`, `stack`, `filename`, `lineno` |
 | `HTTP_ERROR` | A `fetch`/`XHR` request returning 4xx/5xx, or a resource (img/script/css) that fails to load | `status`, `method`, `url`, `kind` |
+| `DEAD_CLICK` | A click on a link/button that caused **nothing** — no navigation, no content change, no request | `tag`, `text`, `selector`, `waitedMs` |
+| `EMPTY_RESPONSE` | A request that succeeded (2xx) but came back empty — `[]`, `{}`, `null`, or `{"data": []}` | `status`, `method`, `url`, `bytes` |
 | `USER_LINKED` | When `linkUser()` is called | `email` |
 
 Disable any category via the `options` prop.
+
+### Silent failures
+
+`DEAD_CLICK` and `EMPTY_RESPONSE` exist because **most product breakage never throws**. A button wired to a handler that returns early, a form that posts into the void, an endpoint answering `200 []` where the user expected their orders — an error monitor sees none of it, because from the runtime's point of view nothing went wrong.
+
+- **Dead clicks** are judged 2.5s after a click on an `<a>`, `<button>`, `role="button"` or `data-track` element. If the URL hasn't changed, the DOM hasn't added or removed any content, and no `fetch`/`XHR` has been issued, the click did nothing. Detection is deliberately biased toward silence — every ambiguous signal counts as "the app responded" — so it under-reports rather than sending you hunting for bugs that don't exist. Repeat clicks on the same control are collapsed for 10s.
+- **Empty responses** are only inspected when the server sends a `Content-Length` at or under 2 KB and a JSON/text content type. Larger bodies are definitionally not empty, so nothing is buffered or cloned for them, and streamed responses are never touched. Your own `res.json()` is completely unaffected — the SDK reads a `clone()`.
+
+**React Native** gets the same treatment. Every `PRESS` the Babel plugin captures is a press on a real `onPress` handler, so a tap that produces no navigation, no custom event and no request is detected server-side with no extra instrumentation — the file and line of the handler come along for free. Three rapid taps on the same control fire `RAGE_CLICK`, the mobile equivalent of a rage click. Both work retroactively on presses you have already collected.
+
+Both surface in the dashboard under **Silent Failures**, ranked by the Wilson lower bound of each signal's abandonment rate. That ranking matters: sorting by raw abandonment count promotes whatever your most-used button is, so a control pressed 1,800 times with a 0.7% drop-off outranks a broken modal that loses 5 users out of 5. Ranking by confidence-weighted rate puts the genuinely broken thing first.
+
+### Releases
+
+Pass `release` and Nohmo builds a deploy timeline, then lines your metric movements up against it — "conversions fell 18% on Tuesday, which coincides with 2.4.1 shipping that morning". React Native uses its existing `appVersion` option for the same purpose.
+
+```tsx
+<NohmoNextProvider projectId="..." apiKey="..." options={{ release: process.env.NEXT_PUBLIC_APP_VERSION }} />
+```
+
+For an exact deploy time (rather than "first seen in the wild"), POST from CI with the same API key:
+
+```bash
+curl -X POST https://www.nohmo.in/api/tracker/release/ \
+  -H "X-API-Key: $NOHMO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"version":"2.4.1","platform":"web","commitSha":"'"$GIT_SHA"'"}'
+```
+
+Idempotent on `(version, platform)`, so re-running a pipeline never creates duplicates.
 
 **Privacy:** `FORM_SUBMIT` and `INPUT_CHANGE` never capture field *values* — only that the interaction happened. Inputs marked `data-sensitive`, password fields, and credit-card fields (`autocomplete="cc-*"`) are skipped entirely, as is any element carrying the `data-nohmo-ignore` attribute.
 
@@ -634,7 +669,8 @@ The SDK fetches your configured list from the backend when it initialises, so th
 | `autoScrollDepth` | `boolean` | `true` | Track scroll depth at 25 / 50 / 75 / 100% |
 | `autoTimeSpent` | `boolean` | `true` | Send `TIME_SPENT` when leaving a page |
 | `autoCapture` | `boolean` | `true` | Capture clicks, rage-clicks, form submits, and input changes automatically (field values are never captured) |
-| `autoErrors` | `boolean` | `true` | Capture uncaught JS errors, unhandled rejections, failed network requests, and resource 404s as `JS_ERROR` / `HTTP_ERROR` |
+| `autoErrors` | `boolean` | `true` | Capture uncaught JS errors, unhandled rejections, failed network requests, and resource 404s as `JS_ERROR` / `HTTP_ERROR`, plus silent failures as `DEAD_CLICK` / `EMPTY_RESPONSE` |
+| `release` | `string` | `''` | The build you're running (e.g. `"2.4.1"` or a commit SHA). Builds the deploy timeline metric movements are correlated against |
 
 ```tsx
 <NohmoNextProvider
