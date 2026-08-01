@@ -628,6 +628,126 @@ Every error is just an event, so it carries the same session and device context 
 
 **Privacy:** error messages are truncated, query strings are stripped from captured URLs, and the SDK never reports failures of its own tracking endpoint.
 
+## Node backend errors (`nohmo/server`)
+
+Exceptions raised on your Node backend go to the **same project** as your frontend's, so a
+500 in your API sits next to the JS error it caused in the browser — same Errors page, same
+grouping, same daily digest.
+
+No extra install: `nohmo/server` ships with this package and has **no runtime dependencies**
+(Node built-ins only). It never imports React or anything browser-side.
+
+```bash
+npm install nohmo
+```
+
+**Express** — the handler goes **last**, after every route and router, because Express only
+shows an error handler what was registered before it:
+
+```js
+const express = require('express')
+const { init, expressErrorHandler } = require('nohmo/server')
+
+init({
+  projectId: process.env.NOHMO_PROJECT_ID,
+  apiKey: process.env.NOHMO_API_KEY,
+  environment: process.env.NODE_ENV,
+  release: process.env.GIT_SHA,          // optional — ties errors to a deploy
+})
+
+const app = express()
+app.get('/orders/:id', getOrder)
+// ... all routes ...
+app.use(expressErrorHandler())           // LAST
+```
+
+It reports and then passes the error straight on, so your own error page or JSON response
+is unchanged. To skip errors that are expected traffic rather than defects:
+
+```js
+app.use(expressErrorHandler({
+  shouldReport: (err) => err.status !== 404,
+}))
+```
+
+**Any other framework** — wrap a `node:http` handler. Works with Connect, Koa's raw layer,
+a Next.js custom server, or a hand-rolled server:
+
+```js
+const http = require('node:http')
+const { init, wrapHandler } = require('nohmo/server')
+
+init({ projectId: '…', apiKey: process.env.NOHMO_API_KEY })
+http.createServer(wrapHandler(async (req, res) => { … })).listen(3000)
+```
+
+**Reporting by hand:**
+
+```js
+const { captureException, captureMessage } = require('nohmo/server')
+
+try {
+  await charge(order)
+} catch (err) {
+  captureException(err, { request: { path: '/checkout' }, extra: { orderId: order.id } })
+}
+
+captureMessage('nightly reconciliation finished with 3 mismatches')
+```
+
+**Short-lived processes** — a cron job, a Lambda, a one-off script. Events ship on a timer
+that is deliberately `unref`'d so it can never hold your process open, which also means it
+may not fire on the way out. Flush explicitly:
+
+```js
+const { flush } = require('nohmo/server')
+await flush(5000)   // resolves false if anything was dropped — worth checking
+```
+
+### Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `environment` | `'production'` | Tags every event |
+| `release` | `''` | Ties errors to a deploy |
+| `serverName` | `os.hostname()` | Groups errors per instance |
+| `sampleRate` | `1` | Fraction of errors sent |
+| `dedupWindow` | `5` | Seconds before an identical error is sent again |
+| `queueSize` | `1000` | Bounded — drops rather than growing without limit |
+| `batchSize` | `50` | Events per request |
+| `flushInterval` | `5` | Seconds before a partial batch ships |
+| `sendDefaultPii` | `false` | Include headers, query strings and user email |
+| `debug` | `false` | Verbose logging |
+
+### Privacy
+
+`sendDefaultPii` is **off** by default: no headers, no query strings, no user email leave
+your server. Turn it on and everything is still run through a credential scrubber that
+redacts `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, and any key containing
+`secret`, `password`, `token`, `api_key`, `private_key` or `credential` — at any nesting
+depth, in both keys and array members.
+
+`userId` is always sent (it is not PII on its own); the user's **email** only with
+`sendDefaultPii: true`.
+
+### Behaviour under load
+
+The queue is bounded and drops the **oldest** events when full — a crash loop can generate
+errors faster than any network can ship them, and an unbounded queue there is a memory leak
+that ends in an OOM kill, i.e. the SDK becoming the outage. Identical errors are deduplicated
+within `dedupWindow`. Failed sends retry with exponential backoff and full jitter, and a
+`Retry-After` from the server is honoured.
+
+If the ingest host is unreachable at all — blocked egress, TLS failure, bad DNS — the SDK
+warns **once**, and once again on recovery:
+
+```
+nohmo: cannot reach https://www.nohmo.in/api/tracker/track/ (…) — events are being dropped.
+```
+
+Nothing it does can throw into your request path: `captureException` swallows its own
+failures, and `flush()` returns `false` rather than rejecting.
+
 ## UTM attribution
 
 UTM parameters are captured automatically on the first page load of each session and sent with every subsequent event. No extra code needed.

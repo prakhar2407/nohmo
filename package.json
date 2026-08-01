@@ -2,29 +2,34 @@
   "type": "module",
   "name": "nohmo",
   "version": "0.3.54",
-  "description": "Official analytics SDK for Nohmo — device tracking, session journeys, and event batching for React, Next.js, and React Native",
-  "main": "dist/index.cjs.js",
+  "description": "Official analytics SDK for Nohmo \u2014 device tracking, session journeys, and event batching for React, Next.js, and React Native",
+  "main": "dist/index.cjs",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     },
     "./react-native": {
+      "types": "./dist/react-native.d.ts",
       "import": "./dist/react-native.esm.js",
-      "require": "./dist/react-native.cjs.js",
-      "types": "./dist/react-native.d.ts"
+      "require": "./dist/react-native.cjs"
     },
     "./react-native/autocapture": {
+      "types": "./dist/autocapture.d.ts",
       "import": "./dist/autocapture.esm.js",
-      "require": "./dist/autocapture.cjs.js",
-      "types": "./dist/autocapture.d.ts"
+      "require": "./dist/autocapture.cjs"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.esm.js",
+      "require": "./dist/server.cjs"
     },
     "./babel-plugin": "./babel-plugin.cjs"
   },
-  "react-native": "dist/react-native.cjs.js",
+  "react-native": "dist/react-native.esm.js",
   "files": [
     "dist",
     "react-native",
@@ -42,13 +47,16 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
+    "@react-native-async-storage/async-storage": ">=1.0.0",
     "react": ">=17.0.0",
     "react-dom": ">=17.0.0",
-    "react-native": ">=0.70.0",
-    "@react-native-async-storage/async-storage": ">=1.0.0"
+    "react-native": ">=0.70.0"
   },
   "peerDependenciesMeta": {
     "next": {
+      "optional": true
+    },
+    "react": {
       "optional": true
     },
     "react-dom": {
@@ -66,6 +74,7 @@
     "@rollup/plugin-node-resolve": "^15.0.0",
     "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^11.0.0",
+    "@types/node": "^22.20.1",
     "@types/react": "^18.0.0",
     "next": "^16.2.4",
     "rollup": "^3.0.0",
