@@ -38,13 +38,13 @@ export default [
       commonjs(),
       typescript({ tsconfig: './tsconfig.build.json' }),
     ],
-    external: ['react', 'react-dom', 'next/navigation'],
+    external: ['react', 'react-dom'],
   },
   {
     input: 'src/index.ts',
     output: [{ file: 'dist/index.d.ts', format: 'esm' }],
     plugins: [dts()],
-    external: ['react', 'react-dom', 'next/navigation'],
+    external: ['react', 'react-dom'],
   },
   // React Native entry point
   {
