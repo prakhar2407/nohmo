@@ -27,7 +27,18 @@ const KEYS = {
   installAttr:  '@nohmo_install_attr',
   deepLink:     '@nohmo_deeplink',
   pendingCrash: '@nohmo_pending_crash',
+  // Undelivered events, so a batch survives the process being killed. Without this the
+  // queue was memory-only: an APP_INSTALL sat there for up to flushInterval ms and was
+  // lost for good if the app closed first — and because the firstOpen flag had already
+  // been written, it was never re-sent. First launch is exactly when that happens most
+  // (cold start, cold network, highest chance the user bounces), so the loss landed
+  // squarely on installs.
+  queue:        '@nohmo_queue',
 }
+
+// Cap on events held in persistent storage. Bounds how much a long offline stretch can
+// write; the newest are kept, since an ancient un-flushed event is the least useful.
+const MAX_PERSISTED_EVENTS = 500
 
 function genId(prefix: string) {
   return `${prefix}_` + Math.random().toString(36).slice(2, 14) + Date.now().toString(36)
@@ -81,6 +92,8 @@ export class NohmoRNTracker {
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null
   private initResolve: () => void = () => {}
   private readonly initPromise: Promise<void>
+  private initStarted = false
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
   private deepLinkUtm: Record<string, string> = {}
   private installAttr: Record<string, string> = {}
   private installAttrAttempted = false
@@ -107,17 +120,42 @@ export class NohmoRNTracker {
     this.initPromise = new Promise(r => { this.initResolve = r })
   }
 
+  /**
+   * Idempotent. A second call returns the first call's promise instead of running again.
+   *
+   * Without this guard two concurrent init()s — a double-mounted provider, StrictMode, a
+   * host app calling init twice — both read firstOpen as null across the await below,
+   * both wrote it, and both sent APP_INSTALL. That produced duplicate installs
+   * milliseconds apart (and duplicate /identify calls, duplicate APP_OPEN, and a leaked
+   * flush timer, since the second setInterval overwrote the handle the first one needed
+   * to be cleared).
+   */
   async init(): Promise<void> {
+    if (this.initStarted) return this.initPromise
+    this.initStarted = true
     try {
       // Read persisted IDs
-      const [storedDeviceId, storedUserId, firstOpenDone, initialUrl, storedInstallAttr, storedCrash] = await Promise.all([
+      const [storedDeviceId, storedUserId, firstOpenDone, initialUrl, storedInstallAttr, storedCrash, storedQueue] = await Promise.all([
         this.storage.getItem(KEYS.deviceId),
         this.storage.getItem(KEYS.userId),
         this.storage.getItem(KEYS.firstOpen),
         Linking.getInitialURL(),
         this.storage.getItem(KEYS.installAttr),
         this.storage.getItem(KEYS.pendingCrash),
+        this.storage.getItem(KEYS.queue),
       ])
+
+      // Events that outlived a previous process. Restored first so they keep their
+      // place at the front of the queue and their original timestamps.
+      if (storedQueue) {
+        try {
+          const restored = JSON.parse(storedQueue) as NohmoRNEvent[]
+          if (Array.isArray(restored) && restored.length) {
+            this.queue.unshift(...restored)
+            this._log(`Restored ${restored.length} unsent events`)
+          }
+        } catch { /* corrupt payload — drop it rather than fail init */ }
+      }
 
       this.deepLinkUtm = parseDeepLinkUtm(initialUrl)
       // DIRECT deep link: the app was opened via a link that carries a destination
@@ -191,6 +229,7 @@ export class NohmoRNTracker {
         this.queue.push({ ...e, deviceId })
       }
       this.pendingEvents = []
+      if (this.queue.length) this._schedulePersist()
 
       // Report a fatal crash recorded on the previous run, attributed back to the
       // session/time it actually happened in (so it lands in the right journey).
@@ -221,14 +260,22 @@ export class NohmoRNTracker {
         await this._drainNativeCrashes(jsCrashHint)
       }
 
-      // Track install (only on very first open)
+      // Track install (only on very first open).
+      //
+      // Ordering matters and used to be wrong: the flag was written first, and the event
+      // went into a memory-only queue. Anything that ended the process before the next
+      // flush lost the install permanently, because the flag said it had been reported.
+      // Now the event is made durable FIRST and the flag is written only once it is
+      // safely on disk, so the worst case is a duplicate-on-retry (which the backend
+      // de-duplicates) rather than a silent loss.
       if (!firstOpenDone) {
-        await this.storage.setItem(KEYS.firstOpen, '1')
         this.send('APP_INSTALL', {
           platform: Platform.OS,
           appVersion: this.config.appVersion,
           osVersion: String(Platform.Version),
         })
+        await this._persistQueue()
+        await this.storage.setItem(KEYS.firstOpen, '1')
 
         // Attempt attribution on all platforms:
         //   Android — reads Play Store referrer via native module (deterministic)
@@ -295,6 +342,7 @@ export class NohmoRNTracker {
     }
 
     this.queue.push({ ...partial, deviceId: this.deviceId })
+    this._schedulePersist()
     this._log('Event queued:', event)
   }
 
@@ -568,6 +616,7 @@ export class NohmoRNTracker {
     }
     if (!this.deviceId) { this.pendingEvents.push(partial); return }
     this.queue.push({ ...partial, deviceId: this.deviceId })
+    this._schedulePersist()
   }
 
   // The optional NohmoCrash native module (absent on web / Expo Go / older hosts).
@@ -635,13 +684,41 @@ export class NohmoRNTracker {
           screen: this.currentScreen,
         })
       }
-      this._flush()
+      // Persist before flushing: backgrounding is the last moment we are reliably given
+      // before the OS may kill the process, and the flush might not complete.
+      void this._persistQueue().then(() => this._flush())
     } else if (nextState === 'active') {
       this.sessionId = genId('sess')
       this.sessionStart = Date.now()
       this._syncCrashContext()
       this.send('APP_OPEN', { platform: Platform.OS, appVersion: this.config.appVersion })
     }
+  }
+
+  /**
+   * Write the pending queue to storage so it survives the process ending.
+   *
+   * Throttled: enqueueing is hot (every screen view, every tap) and a storage write per
+   * event would be wasteful. `immediate` skips the throttle for the cases that must not
+   * be lost — the install, and going to background.
+   */
+  private _schedulePersist() {
+    if (this.persistTimer) return
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null
+      void this._persistQueue()
+    }, 1000)
+  }
+
+  private async _persistQueue(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer)
+      this.persistTimer = null
+    }
+    try {
+      const tail = this.queue.slice(-MAX_PERSISTED_EVENTS)
+      await this.storage.setItem(KEYS.queue, tail.length ? JSON.stringify(tail) : '')
+    } catch { /* storage full or unavailable — in-memory delivery still works */ }
   }
 
   private async _flush() {
@@ -665,16 +742,23 @@ export class NohmoRNTracker {
     })
 
     try {
-      await fetch(`${_h}${_p.t}`, {
+      const res = await fetch(`${_h}${_p.t}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
       })
+      // A 5xx means the server never took the batch, so treat it like a network failure
+      // and keep the events. Only a response the server actually accepted clears them.
+      // Previously any response at all — including a 502 from a proxy — was treated as
+      // success and the batch was dropped.
+      if (!res.ok && res.status >= 500) throw new Error(`HTTP ${res.status}`)
       this._log(`Flushed ${batch.length} events`)
+      await this._persistQueue()   // delivered — drop them from durable storage too
     } catch (err) {
-      // Re-queue on failure
+      // Re-queue on failure, and persist so the retry survives the process ending.
       this.queue.unshift(...batch)
       this._log('Flush failed, re-queued:', err)
+      await this._persistQueue()
     }
   }
 
@@ -684,6 +768,8 @@ export class NohmoRNTracker {
 
   destroy() {
     if (this.flushTimer) clearInterval(this.flushTimer)
+    if (this.persistTimer) { clearTimeout(this.persistTimer); this.persistTimer = null }
+    void this._persistQueue()
     this.appStateSubscription?.remove()
     this.linkingSub?.remove()
     this.deepLinkListeners = []
