@@ -735,6 +735,14 @@ export class NohmoRNTracker {
         page: e.screen,
         referrer: e.referrer,
         ts: e.ts,
+        // The queued event has always carried this; it was dropped here, on the way out.
+        // Ingestion needs it: when /track arrives before a Device row exists — the very
+        // first launch, or any launch where /identify failed — the backend seeds the
+        // device from the model default 'web'. It then denormalises 'web' onto these
+        // events, and an APP_INSTALL stamped 'web' is invisible to every mobile install
+        // metric. Sending the platform lets the device be created correctly the first
+        // time, instead of relying on a later /identify to come back and repair it.
+        platform: e.platform,
         ...(e.utm ? { utm: e.utm } : {}),
         ...(e.install_utm ? { install_utm: e.install_utm } : {}),
       })),
